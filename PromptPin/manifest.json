@@ -1,0 +1,9 @@
+{
+  "name": "PromptPin",
+  "short_name": "PromptPin",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#faf7ff",
+  "theme_color": "#b7a8ff",
+  "icons": []
+}
