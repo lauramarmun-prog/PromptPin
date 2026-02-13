@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PromptPin</title>
+
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#b7a8ff" />
+
+  <link rel="stylesheet" href="./styles.css" /></head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">📌</div>
+      <div>
+        <div class="brand-name"><span class="brand-prompt">Prompt</span><span class="brand-pin">Pin</span></div>
+        <div class="brand-byline">by Lau&Geppie Lilazul</div>
+        <div class="brand-sub">Your cozy prompt + image album.</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="navbtn active" data-route="album">Album</button>
+      <button class="navbtn" data-route="builder">Builder</button>
+<button class="navbtn" data-route="presets">Presets</button>
+    </nav>
+    <button id="themeToggle" class="ghost" type="button" aria-label="Toggle dark mode">
+      <span class="themeIcon"></span>
+      <span class="themeLabel">Dark</span>
+    </button>
+  </header>
+
+  <main class="container">
+    <!-- ALBUM -->
+    <section id="view-album" class="view">
+ <div class="album-head">
+  <div class="album-toolbar">
+    <div class="toolbar-left">
+      <input id="searchInput" class="search" type="search" placeholder="Search prompts..." autocomplete="off" />
+      <div class="tabs tabs-under-search">
+        <button id="tabMine" class="tab active" type="button">
+          My Prompts <span class="tab-count" id="countMine">0</span>
+        </button>
+
+        <button id="tabSaved" class="tab" type="button">
+          Community Prompts <span class="tab-count" id="countSaved">0</span>
+        </button>
+        <div class="mood-sidebar">
+          <button data-mood="sweet">&#x1F36C; Sweet</button>
+          <button data-mood="spicy">&#x1F336;&#xFE0F; Spicy</button>
+          <button data-mood="other">&#x2728; Other</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:8px;">
+      <button id="downloadAllZipBtn" class="ghost" type="button">Download ZIP</button>
+      <button id="newPinBtn" class="primary" type="button">+ New Pin</button>
+    </div>
+  </div>
+</div>
+
+
+      <div id="emptyState" class="empty">
+        <div class="empty-card">
+          <div class="empty-emoji">*</div>
+          <div class="empty-title">No pins yet.</div>
+          <div class="empty-text">Create your first pin.</div>
+          <button id="emptyNewPinBtn" class="primary">+ New Pin</button>
+        </div>
+      </div>
+
+      <div id="grid" class="masonry" aria-live="polite"></div>
+    </section>
+
+    <!-- BUILDER -->
+    <section id="view-builder" class="view hidden">
+      <div class="builder">
+        <div class="field">
+          <label class="label">Image</label>
+          <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload image">
+            <input id="imageInput" type="file" accept="image/*" hidden />
+            <div class="dz-inner">
+              <div class="dz-title">Upload an image</div>
+              <div class="dz-sub">Drag & drop, or click to choose</div>
+            </div>
+          </div>
+          <div id="imagePreviewWrap" class="preview-wrap hidden">
+            <img id="imagePreview" class="preview" alt="Preview" />
+            <button id="removeImageBtn" class="chip">Remove image</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="label" for="promptInput">Prompt</label>
+          <textarea id="promptInput" class="textarea" rows="10" placeholder="Paste your prompt here..."></textarea>
+        </div>
+
+        <div class="field">
+          <label class="label" for="notesInput">Notes (optional)</label>
+          <textarea id="notesInput" class="textarea" rows="4" placeholder="Any extra notes..."></textarea>
+        </div>
+
+        <div class="field">
+          <label class="label" for="dateInput">Date (optional)</label>
+          <input id="dateInput" class="input" type="text" placeholder="DD/MM/YYYY" />
+        </div>
+
+        <div class="field">
+          <label class="label">Mood (optional)</label>
+          <div class="mood-picker">
+            <label class="mood-option">
+              <input type="checkbox" value="sweet" />
+              &#x1F36C; Sweet
+            </label>
+            <label class="mood-option">
+              <input type="checkbox" value="spicy" />
+              &#x1F336;&#xFE0F; Spicy
+            </label>
+            <label class="mood-option">
+              <input type="checkbox" value="other" />
+              &#x2728; Other
+            </label>
+          </div>
+        </div>
+
+        <div class="hint">Tip: your pins are saved locally on this device.</div>
+      </div>
+<label class="row">
+  <input id="isMine" type="checkbox" checked />
+  <span>This prompt is mine</span>
+</label>
+
+<div id="creditFields" class="creditFields hidden">
+  <input id="creditName" type="text" placeholder="Credit (name)" />
+  <input id="creditLink" type="text" placeholder="Credit link (optional)" />
+</div>
+
+      <!-- Sticky bar (mobile) -->
+      <div class="stickybar">
+        <button id="copyBtn" class="ghost" type="button">Copy</button>
+        <button id="saveBtn" class="primary" type="button" disabled>Save</button>
+      </div>
+    </section>
+  </main>
+
+<!-- PRESETS -->
+<section id="view-presets" class="view hidden">
+  <div class="album-head">
+    <div class="album-toolbar">
+      <div class="toolbar-left">
+        <input id="presetSearch" class="search" type="search" placeholder="Search presets..." autocomplete="off" />
+      </div>
+      <button id="newPresetBtn" class="primary" type="button">+ New Preset</button>
+    </div>
+  </div>
+  <div id="presetGrid" class="preset-list"></div>
+
+  <!-- PROMPT MIXER (multi presets ordered) -->
+  <div class="mixer">
+    <div class="field">
+      <label class="label" for="mixerTemplate">Template prompt</label>
+      <textarea id="mixerTemplate" class="textarea" rows="10"
+        placeholder="Paste your prompt template here..."></textarea>
+      <div class="hint">
+        Put <code>&lt;INSERT CHARACTER DESCRIPTION&gt;</code> in your template.
+        We will replace it with the selected presets (in order).
+      </div>
+    </div>
+
+    <div class="mixer-row">
+      <div class="mixer-left">
+        <div class="label">Choose presets (ordered)</div>
+        <div id="mixerPick" class="mixer-picklist"></div>
+      </div>
+
+      <div class="mixer-actions">
+        <button id="mixerBuild" class="primary" type="button">Build</button>
+        <button id="mixerCopy" class="ghost" type="button">Copy result</button>
+        <button id="mixerClear" class="ghost" type="button">Clear selection</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="label" for="mixerResult">Result</label>
+      <textarea id="mixerResult" class="textarea" rows="10" readonly
+        placeholder="Your merged prompt will appear here..."></textarea>
+    </div>
+  </div>
+</section>
+
+
+  <!-- DETAIL MODAL -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Pin details">
+    <div class="modal-backdrop" id="modalBackdrop"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title" id="modalTitle">Pin</div>
+        <button class="iconbtn" id="closeModalBtn" aria-label="Close">X</button>
+      </div>
+
+      <div class="modal-body">
+        <img id="modalImage" class="modal-img" alt="Pin image" />
+        <div class="modal-section">
+          <div class="label">Prompt</div>
+          <pre id="modalPrompt" class="pre"></pre>
+        </div>
+        <div class="modal-section" id="modalDateWrap">
+          <div class="label">Date</div>
+          <div id="modalDate" class="pre muted"></div>
+        </div>
+        <div class="modal-section" id="modalNotesWrap">
+          <div class="label">Notes</div>
+          <pre id="modalNotes" class="pre muted"></pre>
+        </div>
+      </div>
+
+      <div class="modal-foot stickybar modalbar">
+        <button id="modalCopyBtn" class="ghost" type="button">Copy</button>
+        <button id="modalDownloadImageBtn" class="ghost" type="button">Download image</button>
+        <button id="modalEditBtn" class="primary" type="button">Edit</button>
+      </div>
+    </div>
+  </div>
+<!-- PRESET EDITOR MODAL -->
+<div id="presetModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Preset editor">
+  <div class="modal-backdrop" id="presetModalBackdrop"></div>
+
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="modal-title" id="presetModalTitle">New Preset</div>
+      <button class="iconbtn" id="presetCloseBtn" aria-label="Close">X</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="preset-editor">
+        <div class="preset-editor-row">
+          <div class="preset-editor-avatar" id="presetAvatarBtn" role="button" tabindex="0" aria-label="Upload avatar">
+            <img id="presetAvatarImg" alt="Avatar preview" />
+            <div class="preset-editor-avatar-fallback" id="presetAvatarFallback">+</div>
+          </div>
+
+          <div class="preset-editor-fields">
+            <label class="label" for="presetName">Name</label>
+            <input id="presetName" class="input" type="text" placeholder="e.g. Lau / Geppie / Character A" />
+
+            <label class="label" for="presetRole" style="margin-top:10px;">Type</label>
+            <select id="presetRole" class="select">
+              <option value="human">Human</option>
+              <option value="ai">AI</option>
+            </select>
+
+            <label class="label" for="presetPronouns" style="margin-top:10px;">Pronouns</label>
+            <select id="presetPronouns" class="select">
+              <option value="she">She / Her</option>
+              <option value="he">He / Him</option>
+              <option value="they">They / Them</option>
+            </select>
+
+            <label class="label" for="presetDesc" style="margin-top:10px;">Description</label>
+            <textarea id="presetDesc" class="textarea" rows="8" placeholder="Write the preset text..."></textarea>
+          </div>
+        </div>
+
+        <input id="presetAvatarInput" type="file" accept="image/*" hidden />
+
+        <div class="preset-editor-actions">
+          <button id="presetRemoveAvatarBtn" class="ghost" type="button">Remove avatar</button>
+          <div style="flex:1"></div>
+          <button id="presetCancelBtn" class="ghost" type="button">Cancel</button>
+          <button id="presetSaveBtn" class="primary" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+  <!-- Toast -->
+  <div id="toast" class="toast" aria-live="assertive" aria-atomic="true"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
