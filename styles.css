@@ -279,6 +279,14 @@ body{
   .masonry{ column-count: 4; }
 }
 
+.loadmore{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 20px;
+}
+
 .pin{
   break-inside: avoid;
   margin: 0 0 14px;
@@ -345,6 +353,26 @@ body{
   transition: opacity .12s ease, transform .12s ease;
 }
 .pin:hover .pin-actions{ opacity: 1; transform: translateY(0); }
+.pin-variant-badge{
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  background: linear-gradient(135deg, #ffd93d, #ff7b36);
+  color: #201600;
+  border: 1px solid rgba(255,255,255,.7);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .2px;
+  box-shadow: 0 8px 14px rgba(255,123,54,.35);
+}
+
+:root[data-theme="dark"] .pin-variant-badge{
+  border-color: rgba(0,0,0,.35);
+  box-shadow: 0 8px 16px rgba(255,140,44,.35);
+}
 .actionbtn{
   padding: 9px 12px;
   border-radius: 14px;
@@ -595,6 +623,38 @@ body{
   border-color: rgba(118,224,255,.22);
 }
 .modal-section{ margin-top: 12px; }
+.modal-variants-list{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.variant-chip{
+  border: 2px solid transparent;
+  border-radius: 12px;
+  padding: 0;
+  background: rgba(255,255,255,.7);
+  cursor: pointer;
+  overflow: hidden;
+}
+.variant-chip img{
+  width: 100%;
+  height: 64px;
+  object-fit: cover;
+  display: block;
+}
+.variant-chip.active{
+  border-color: #ff7b36;
+  box-shadow: 0 0 0 2px rgba(255,123,54,.2);
+}
+:root[data-theme="dark"] .variant-chip{
+  background: rgba(255,255,255,.08);
+  border-color: rgba(118,224,255,.18);
+}
+:root[data-theme="dark"] .variant-chip.active{
+  border-color: #ffb020;
+  box-shadow: 0 0 0 2px rgba(255,176,32,.2);
+}
 .pre{
   white-space: pre-wrap;
   word-break: break-word;
