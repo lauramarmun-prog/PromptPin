@@ -56,6 +56,8 @@
 
     <div style="display:flex; gap:8px;">
       <button id="downloadAllZipBtn" class="ghost" type="button">Download ZIP</button>
+      <button id="importZipBtn" class="ghost" type="button">Import ZIP</button>
+      <input id="importZipInput" type="file" accept=".zip,application/zip" hidden />
       <button id="newPinBtn" class="primary" type="button">+ New Pin</button>
     </div>
   </div>
@@ -72,6 +74,10 @@
       </div>
 
       <div id="grid" class="masonry" aria-live="polite"></div>
+      <div id="loadMoreWrap" class="loadmore hidden">
+        <button id="loadMoreBtn" class="ghost" type="button">Load more</button>
+        <div id="loadMoreInfo" class="hint"></div>
+      </div>
     </section>
 
     <!-- BUILDER -->
@@ -202,6 +208,10 @@
 
       <div class="modal-body">
         <img id="modalImage" class="modal-img" alt="Pin image" />
+        <div class="modal-section hidden" id="modalVariantsWrap">
+          <div class="label" id="modalVariantsTitle">This prompt has variants</div>
+          <div id="modalVariants" class="modal-variants-list"></div>
+        </div>
         <div class="modal-section">
           <div class="label">Prompt</div>
           <pre id="modalPrompt" class="pre"></pre>
@@ -219,6 +229,7 @@
       <div class="modal-foot stickybar modalbar">
         <button id="modalCopyBtn" class="ghost" type="button">Copy</button>
         <button id="modalDownloadImageBtn" class="ghost" type="button">Download image</button>
+        <button id="modalDeleteBtn" class="ghost" type="button">Delete</button>
         <button id="modalEditBtn" class="primary" type="button">Edit</button>
       </div>
     </div>
@@ -282,3 +293,4 @@
   <script type="module" src="./app.js"></script>
 </body>
 </html>
+
