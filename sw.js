@@ -1,4 +1,4 @@
-const CACHE = "promptpin-v7"; // súbelo: v8, v9...
+const CACHE = "promptpin-v8";
 const ASSETS = [
   "./",
   "./index.html",
@@ -13,7 +13,15 @@ self.addEventListener("install", (e) => {
 });
 
 self.addEventListener("activate", (e) => {
-  e.waitUntil(self.clients.claim());
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(
+      keys
+        .filter((k) => k.startsWith("promptpin-v") && k !== CACHE)
+        .map((k) => caches.delete(k))
+    );
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("fetch", (e) => {
