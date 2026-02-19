@@ -1,5 +1,5 @@
 import {
-  listPins, upsertPin, getPin,
+  listPins, upsertPin, getPin, deletePin,
   listPresets, upsertPreset, getPreset, deletePreset
 } from "./idb.js";
 
@@ -29,9 +29,14 @@ const routes = {
 const navBtns = document.querySelectorAll(".navbtn");
 const grid = $("#grid");
 const emptyState = $("#emptyState");
+const loadMoreWrap = $("#loadMoreWrap");
+const loadMoreBtn = $("#loadMoreBtn");
+const loadMoreInfo = $("#loadMoreInfo");
 const searchInput = $("#searchInput");
 const newPinBtn = $("#newPinBtn");
 const downloadAllZipBtn = $("#downloadAllZipBtn");
+const importZipBtn = $("#importZipBtn");
+const importZipInput = $("#importZipInput");
 const emptyNewPinBtn = $("#emptyNewPinBtn");
 const themeToggle = $("#themeToggle");
 const themeIcon = document.querySelector(".themeIcon");
@@ -61,8 +66,12 @@ const modalNotesWrap = $("#modalNotesWrap");
 const modalNotes = $("#modalNotes");
 const modalDateWrap = $("#modalDateWrap");
 const modalDate = $("#modalDate");
+const modalVariantsWrap = $("#modalVariantsWrap");
+const modalVariants = $("#modalVariants");
+const modalVariantsTitle = $("#modalVariantsTitle");
 const modalCopyBtn = $("#modalCopyBtn");
 const modalDownloadImageBtn = $("#modalDownloadImageBtn");
+const modalDeleteBtn = $("#modalDeleteBtn");
 const modalEditBtn = $("#modalEditBtn");
 const modalTitle = $("#modalTitle");
 
@@ -85,6 +94,7 @@ const presetRemoveAvatarBtn = $("#presetRemoveAvatarBtn");
 
 const presetCancelBtn = $("#presetCancelBtn");
 const presetSaveBtn = $("#presetSaveBtn");
+const ALBUM_PAGE_SIZE = 24;
 
 
 let state = {
@@ -102,10 +112,12 @@ presetAvatarType: null,
   albumTab: "mine",       // "mine" | "saved"
   builderIsMine: true,    // checkbox in builder
   moodFilter: "all",      // "all" | "sweet" | "spicy" | "other"
+  albumVisibleCount: ALBUM_PAGE_SIZE,
 };
 
 let mixerSelectedIds = []; // keeps order of selection
 let zipDownloadRunning = false;
+let zipImportRunning = false;
 
 function fileExtFromType(type, fallback = "png") {
   const map = {
@@ -169,6 +181,55 @@ function buildPinTextExport(pin) {
   return lines.join("\n");
 }
 
+function parsePinTextExport(text, fallbackTitle = "Untitled") {
+  const lines = String(text || "").replace(/\r/g, "").split("\n");
+  const out = {
+    title: fallbackTitle,
+    bucket: "mine",
+    dateText: "",
+    moods: [],
+    creditName: "",
+    creditLink: "",
+    prompt: "",
+    notes: "",
+  };
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line === "Prompt:" || line === "Notes:") break;
+    const idx = line.indexOf(":");
+    if (idx <= 0) continue;
+    const key = line.slice(0, idx).trim().toLowerCase();
+    const value = line.slice(idx + 1).trim();
+
+    if (key === "title" && value) out.title = value;
+    if (key === "owner") out.bucket = value.toLowerCase() === "saved" ? "saved" : "mine";
+    if (key === "date") out.dateText = value;
+    if (key === "moods") {
+      out.moods = value
+        .split(",")
+        .map((m) => m.trim().toLowerCase())
+        .filter(Boolean);
+    }
+    if (key === "credit") out.creditName = value;
+    if (key === "credit link") out.creditLink = value;
+  }
+
+  const promptStart = lines.findIndex((l) => l.trim() === "Prompt:");
+  const notesStart = lines.findIndex((l) => l.trim() === "Notes:");
+
+  if (promptStart >= 0) {
+    const promptEnd = notesStart >= 0 && notesStart > promptStart ? notesStart : lines.length;
+    out.prompt = lines.slice(promptStart + 1, promptEnd).join("\n").trim();
+  }
+  if (notesStart >= 0) {
+    out.notes = lines.slice(notesStart + 1).join("\n").trim();
+  }
+
+  return out;
+}
+
 function getPinImageDownloadData(pin) {
   if (!pin?.imageBlob) return null;
   const ext = fileExtFromType(pin.imageType || pin.imageBlob.type, "png");
@@ -196,6 +257,19 @@ async function downloadModalImage() {
   downloadSinglePinImage(pin, 1, false);
 }
 
+async function deleteModalPin() {
+  const pin = state.pins.find((p) => p.id === state.modalOpenId);
+  if (!pin) return;
+
+  const ok = window.confirm("Delete this pin?");
+  if (!ok) return;
+
+  await deletePin(pin.id);
+  closeModal();
+  await refreshPins();
+  showToast("Deleted");
+}
+
 async function downloadAllImagesZip() {
   if (zipDownloadRunning) return;
   if (!window.JSZip) {
@@ -221,6 +295,7 @@ async function downloadAllImagesZip() {
     const names = new Set();
     let ok = 0;
     let fail = 0;
+    const total = pinsWithImage.length;
 
     for (let i = 0; i < pinsWithImage.length; i++) {
       const pin = pinsWithImage[i];
@@ -228,6 +303,10 @@ async function downloadAllImagesZip() {
       if (!file) {
         fail++;
         continue;
+      }
+
+      if (downloadAllZipBtn) {
+        downloadAllZipBtn.textContent = `Preparing ZIP... ${i + 1}/${total}`;
       }
 
       let name = buildPinImageFileName(pin, i + 1, file.ext);
@@ -244,6 +323,10 @@ async function downloadAllImagesZip() {
       zip.file(name, file.blob);
       zip.file(name.replace(/\.[^/.]+$/, ".txt"), buildPinTextExport(pin));
       ok++;
+
+      if ((i + 1) % 12 === 0) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
     }
 
     if (!ok) {
@@ -251,8 +334,15 @@ async function downloadAllImagesZip() {
       return;
     }
 
-    if (downloadAllZipBtn) downloadAllZipBtn.textContent = "Building ZIP...";
-    const blob = await zip.generateAsync({ type: "blob" });
+    if (downloadAllZipBtn) downloadAllZipBtn.textContent = "Building ZIP... 0%";
+    const blob = await zip.generateAsync(
+      { type: "blob", compression: "STORE" },
+      (meta) => {
+        if (!downloadAllZipBtn) return;
+        const pct = Math.max(0, Math.min(100, Math.round(meta.percent || 0)));
+        downloadAllZipBtn.textContent = `Building ZIP... ${pct}%`;
+      }
+    );
     const stamp = new Date().toISOString().slice(0, 10);
     triggerBlobDownload(blob, `promptpin-export-${stamp}.zip`);
     showToast(`ZIP ready: ${ok} images${fail ? `, ${fail} failed` : ""}`);
@@ -261,6 +351,151 @@ async function downloadAllImagesZip() {
     if (downloadAllZipBtn) {
       downloadAllZipBtn.disabled = false;
       downloadAllZipBtn.textContent = originalText;
+    }
+  }
+}
+
+function mimeFromExt(ext) {
+  const key = String(ext || "").toLowerCase();
+  if (key === "jpg" || key === "jpeg") return "image/jpeg";
+  if (key === "png") return "image/png";
+  if (key === "webp") return "image/webp";
+  if (key === "gif") return "image/gif";
+  if (key === "avif") return "image/avif";
+  return "application/octet-stream";
+}
+
+async function hashBlobSha256(blob) {
+  if (!blob || !crypto?.subtle) return null;
+  const buffer = await blob.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function importPinsFromZip(file) {
+  if (!file) return;
+  if (zipImportRunning) return;
+  if (!window.JSZip) {
+    showToast("ZIP library unavailable");
+    return;
+  }
+
+  zipImportRunning = true;
+  const originalText = importZipBtn?.textContent || "Import ZIP";
+  if (importZipBtn) {
+    importZipBtn.disabled = true;
+    importZipBtn.textContent = "Importing...";
+  }
+
+  try {
+    const zip = await window.JSZip.loadAsync(file);
+    const imageEntries = Object.values(zip.files).filter((entry) => {
+      if (entry.dir) return false;
+      return /\.(png|jpe?g|webp|gif|avif)$/i.test(entry.name);
+    });
+
+    if (!imageEntries.length) {
+      showToast("ZIP has no images to import");
+      return;
+    }
+
+    let imported = 0;
+    let skipped = 0;
+    let failed = 0;
+    const now = Date.now();
+    const knownImageHashes = new Set();
+
+    for (const existingPin of state.pins) {
+      if (!existingPin?.imageBlob) continue;
+      try {
+        const h = await hashBlobSha256(existingPin.imageBlob);
+        if (h) knownImageHashes.add(h);
+      } catch {
+        // ignore hash errors on existing items
+      }
+    }
+
+    for (let i = 0; i < imageEntries.length; i++) {
+      const imgEntry = imageEntries[i];
+      try {
+        const extMatch = imgEntry.name.match(/\.([a-zA-Z0-9]+)$/);
+        const ext = (extMatch?.[1] || "png").toLowerCase();
+        const mime = mimeFromExt(ext);
+        const dot = imgEntry.name.lastIndexOf(".");
+        const txtPath = `${dot >= 0 ? imgEntry.name.slice(0, dot) : imgEntry.name}.txt`;
+        const txtEntry = zip.file(txtPath);
+
+        const rawBlob = await imgEntry.async("blob");
+        const imageBlob = new Blob([rawBlob], { type: mime });
+        const hash = await hashBlobSha256(imageBlob);
+        if (hash && knownImageHashes.has(hash)) {
+          skipped++;
+          continue;
+        }
+
+        const fallbackTitle = firstTitleFromPrompt(
+          imgEntry.name.split("/").pop()?.replace(/\.[^/.]+$/, "").replace(/[-_]+/g, " ") || "Untitled"
+        );
+        const meta = txtEntry
+          ? parsePinTextExport(await txtEntry.async("text"), fallbackTitle)
+          : {
+              title: fallbackTitle,
+              bucket: "mine",
+              dateText: "",
+              moods: [],
+              creditName: "",
+              creditLink: "",
+              prompt: "",
+              notes: "",
+            };
+
+        const pin = {
+          id: uuid(),
+          createdAt: now + i,
+          updatedAt: now + i,
+          title: meta.title || fallbackTitle,
+          prompt: meta.prompt || "",
+          notes: meta.notes || "",
+          dateText: meta.dateText || "",
+          moods: Array.isArray(meta.moods) ? meta.moods : [],
+          imageBlob,
+          imageType: mime,
+          bucket: meta.bucket === "saved" ? "saved" : "mine",
+          creditName: meta.bucket === "saved" ? (meta.creditName || "") : "",
+          creditLink: meta.bucket === "saved" ? (meta.creditLink || "") : "",
+        };
+
+        await upsertPin(pin);
+        if (hash) knownImageHashes.add(hash);
+        imported++;
+      } catch {
+        failed++;
+      }
+    }
+
+    if (!imported && skipped > 0 && !failed) {
+      showToast("No new images: all were duplicates");
+      return;
+    }
+
+    if (!imported) {
+      showToast("Import failed");
+      return;
+    }
+
+    await refreshPins();
+    showToast(
+      `Imported: ${imported}${skipped ? `, skipped duplicates: ${skipped}` : ""}${failed ? `, failed: ${failed}` : ""}`
+    );
+  } catch {
+    showToast("Invalid ZIP file");
+  } finally {
+    zipImportRunning = false;
+    if (importZipBtn) {
+      importZipBtn.disabled = false;
+      importZipBtn.textContent = originalText;
     }
   }
 }
@@ -413,6 +648,10 @@ function showToast(msg) {
   window.__toastTimer = setTimeout(() => toast.classList.remove("show"), 1400);
 }
 
+function resetAlbumPagination() {
+  state.albumVisibleCount = ALBUM_PAGE_SIZE;
+}
+
 function routeTo(name) {
   state.currentRoute = name;
 
@@ -435,6 +674,16 @@ function routeTo(name) {
 function firstTitleFromPrompt(prompt) {
   const t = (prompt || "").trim().split(/\s+/).slice(0, 6).join(" ");
   return t || "Untitled";
+}
+
+function normalizePromptVariantKey(prompt) {
+  return String(prompt || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getVariantPinsForPrompt(prompt) {
+  const key = normalizePromptVariantKey(prompt);
+  if (!key) return [];
+  return state.pins.filter((p) => normalizePromptVariantKey(p.prompt) === key && p.imageBlob);
 }
 
 function renderAlbum() {
@@ -467,10 +716,25 @@ function renderAlbum() {
       )
     : moodBase;
 
+  const variantCountByPrompt = new Map();
+  for (const p of state.pins) {
+    const key = normalizePromptVariantKey(p.prompt);
+    if (!key || !p.imageBlob) continue;
+    variantCountByPrompt.set(key, (variantCountByPrompt.get(key) || 0) + 1);
+  }
+
+  const visibleCount = Math.min(filtered.length, state.albumVisibleCount || ALBUM_PAGE_SIZE);
+  const visiblePins = filtered.slice(0, visibleCount);
+
   grid.innerHTML = "";
   emptyState.style.display = filtered.length ? "none" : "block";
+  if (loadMoreWrap) {
+    const hasMore = visibleCount < filtered.length;
+    loadMoreWrap.classList.toggle("hidden", !hasMore);
+    if (loadMoreInfo) loadMoreInfo.textContent = hasMore ? `Showing ${visibleCount} of ${filtered.length}` : "";
+  }
 
-  for (const pin of filtered) {
+  for (const pin of visiblePins) {
     const card = document.createElement("article");
     card.className = "pin";
     card.tabIndex = 0;
@@ -482,6 +746,8 @@ function renderAlbum() {
       const url = URL.createObjectURL(pin.imageBlob);
       img.src = url;
       img.onload = () => URL.revokeObjectURL(url);
+      img.loading = "lazy";
+      img.decoding = "async";
     } else {
       img.src = "";
     }
@@ -530,6 +796,13 @@ function renderAlbum() {
 
     card.appendChild(img);
     card.appendChild(actions);
+    const variantCount = variantCountByPrompt.get(normalizePromptVariantKey(pin.prompt)) || 0;
+    if (variantCount > 1) {
+      const badge = document.createElement("div");
+      badge.className = "pin-variant-badge";
+      badge.textContent = `+${variantCount - 1} variants`;
+      card.appendChild(badge);
+    }
     card.appendChild(meta);
 
     card.addEventListener("click", () => openModal(pin.id));
@@ -543,6 +816,7 @@ function renderAlbum() {
 
 async function refreshPins() {
   state.pins = await listPins();
+  resetAlbumPagination();
   renderAlbum();
 }
 
@@ -649,7 +923,14 @@ async function savePin() {
   await upsertPin(pin);
   showToast("Saved ✨");
 
-  await refreshPins();
+  const idx = state.pins.findIndex((p) => p.id === pin.id);
+  if (idx >= 0) {
+    state.pins[idx] = pin;
+  } else {
+    state.pins.unshift(pin);
+  }
+  state.pins.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  renderAlbum();
   routeTo("album");
   resetBuilder();
 }
@@ -669,6 +950,37 @@ function openModal(id) {
   }
 
   modalPrompt.textContent = pin.prompt || "";
+  const variants = getVariantPinsForPrompt(pin.prompt || "");
+  if (variants.length > 1 && modalVariantsWrap && modalVariants) {
+    modalVariantsWrap.classList.remove("hidden");
+    if (modalVariantsTitle) {
+      modalVariantsTitle.textContent = `This prompt has ${variants.length} variants`;
+    }
+    modalVariants.innerHTML = "";
+
+    for (let i = 0; i < variants.length; i++) {
+      const variantPin = variants[i];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "variant-chip";
+      if (variantPin.id === pin.id) btn.classList.add("active");
+      btn.setAttribute("aria-label", `Open variant ${i + 1}`);
+
+      const img = document.createElement("img");
+      const vUrl = URL.createObjectURL(variantPin.imageBlob);
+      img.src = vUrl;
+      img.alt = `Variant ${i + 1}`;
+      img.onload = () => URL.revokeObjectURL(vUrl);
+      btn.appendChild(img);
+
+      btn.addEventListener("click", () => openModal(variantPin.id));
+      modalVariants.appendChild(btn);
+    }
+  } else if (modalVariantsWrap && modalVariants) {
+    modalVariantsWrap.classList.add("hidden");
+    modalVariants.innerHTML = "";
+  }
+
   if (pin.dateText && pin.dateText.trim()) {
     modalDateWrap.style.display = "block";
     modalDate.textContent = pin.dateText;
@@ -733,6 +1045,12 @@ newPresetBtn?.addEventListener("click", () => openPresetEditor());
     applyTheme(next);
   });
   downloadAllZipBtn?.addEventListener("click", downloadAllImagesZip);
+  importZipBtn?.addEventListener("click", () => importZipInput?.click());
+  importZipInput?.addEventListener("change", async () => {
+    const file = importZipInput.files?.[0];
+    await importPinsFromZip(file);
+    importZipInput.value = "";
+  });
 
 // Preset modal close
 presetModalBackdrop?.addEventListener("click", closePresetModal);
@@ -815,7 +1133,10 @@ window.addEventListener("keydown", (e) => {
   emptyNewPinBtn?.addEventListener("click", () => { resetBuilder(); routeTo("builder"); });
 
   // Search
-  searchInput?.addEventListener("input", renderAlbum);
+  searchInput?.addEventListener("input", () => {
+    resetAlbumPagination();
+    renderAlbum();
+  });
 
   // Mood filter
   moodSidebar?.addEventListener("click", (e) => {
@@ -828,6 +1149,7 @@ window.addEventListener("keydown", (e) => {
       b.classList.toggle("active", b.dataset.mood === state.moodFilter);
     });
 
+    resetAlbumPagination();
     renderAlbum();
   });
 
@@ -882,6 +1204,7 @@ window.addEventListener("keydown", (e) => {
     state.albumTab = tab;
     tabMine?.classList.toggle("active", tab === "mine");
     tabSaved?.classList.toggle("active", tab === "saved");
+    resetAlbumPagination();
     renderAlbum();
   }
 
@@ -909,7 +1232,12 @@ window.addEventListener("keydown", (e) => {
     await copyText(pin?.prompt || "");
   });
   modalDownloadImageBtn?.addEventListener("click", downloadModalImage);
+  modalDeleteBtn?.addEventListener("click", deleteModalPin);
   modalEditBtn?.addEventListener("click", editFromModal);
+  loadMoreBtn?.addEventListener("click", () => {
+    state.albumVisibleCount = (state.albumVisibleCount || ALBUM_PAGE_SIZE) + ALBUM_PAGE_SIZE;
+    renderAlbum();
+  });
 
   // ESC closes modal
   window.addEventListener("keydown", (e) => {
@@ -1116,3 +1444,4 @@ async function renderPresets() {
 }
 
 presetSearch?.addEventListener("input", renderPresets);
+
