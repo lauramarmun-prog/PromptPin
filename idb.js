@@ -156,3 +156,4 @@ export async function deletePreset(id) {
   await txDone(tx);
   db.close();
 }
+
