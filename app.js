@@ -8,6 +8,9 @@ const $ = (sel) => document.querySelector(sel);
 // Pins counters (tabs)
 const countMine = $("#countMine");
 const countSaved = $("#countSaved");
+const countSweet = $("#countSweet");
+const countSpicy = $("#countSpicy");
+const countOther = $("#countOther");
 
 // Presets UI
 const presetGrid = $("#presetGrid");
@@ -66,6 +69,8 @@ const modalNotesWrap = $("#modalNotesWrap");
 const modalNotes = $("#modalNotes");
 const modalDateWrap = $("#modalDateWrap");
 const modalDate = $("#modalDate");
+const modalGeneratorsWrap = $("#modalGeneratorsWrap");
+const modalGenerators = $("#modalGenerators");
 const modalVariantsWrap = $("#modalVariantsWrap");
 const modalVariants = $("#modalVariants");
 const modalVariantsTitle = $("#modalVariantsTitle");
@@ -118,6 +123,8 @@ presetAvatarType: null,
 let mixerSelectedIds = []; // keeps order of selection
 let zipDownloadRunning = false;
 let zipImportRunning = false;
+let savePinRunning = false;
+const GENERATOR_OPTIONS = ["Sora", "ChatGPT", "Grok", "NanoBanana"];
 
 function fileExtFromType(type, fallback = "png") {
   const map = {
@@ -162,6 +169,7 @@ function buildPinTextExport(pin) {
   const prompt = (pin?.prompt || "").trim();
   const notes = (pin?.notes || "").trim();
   const dateText = (pin?.dateText || "").trim();
+  const generators = Array.isArray(pin?.generators) ? pin.generators.join(", ") : "";
   const moods = Array.isArray(pin?.moods) ? pin.moods.join(", ") : "";
   const owner = (pin?.bucket || "mine") === "mine" ? "mine" : "saved";
   const creditName = (pin?.creditName || "").trim();
@@ -172,6 +180,7 @@ function buildPinTextExport(pin) {
     `Owner: ${owner}`,
   ];
   if (dateText) lines.push(`Date: ${dateText}`);
+  if (generators) lines.push(`Generators: ${generators}`);
   if (moods) lines.push(`Moods: ${moods}`);
   if (creditName) lines.push(`Credit: ${creditName}`);
   if (creditLink) lines.push(`Credit link: ${creditLink}`);
@@ -187,6 +196,7 @@ function parsePinTextExport(text, fallbackTitle = "Untitled") {
     title: fallbackTitle,
     bucket: "mine",
     dateText: "",
+    generators: [],
     moods: [],
     creditName: "",
     creditLink: "",
@@ -206,6 +216,12 @@ function parsePinTextExport(text, fallbackTitle = "Untitled") {
     if (key === "title" && value) out.title = value;
     if (key === "owner") out.bucket = value.toLowerCase() === "saved" ? "saved" : "mine";
     if (key === "date") out.dateText = value;
+    if (key === "generators") {
+      out.generators = value
+        .split(",")
+        .map((g) => normalizeGeneratorTag(g))
+        .filter(Boolean);
+    }
     if (key === "moods") {
       out.moods = value
         .split(",")
@@ -444,6 +460,7 @@ async function importPinsFromZip(file) {
               title: fallbackTitle,
               bucket: "mine",
               dateText: "",
+              generators: [],
               moods: [],
               creditName: "",
               creditLink: "",
@@ -458,7 +475,8 @@ async function importPinsFromZip(file) {
           title: meta.title || fallbackTitle,
           prompt: meta.prompt || "",
           notes: meta.notes || "",
-          dateText: meta.dateText || "",
+          dateText: meta.dateText || todayInputValue(),
+          generators: Array.isArray(meta.generators) ? meta.generators : [],
           moods: Array.isArray(meta.moods) ? meta.moods : [],
           imageBlob,
           imageType: mime,
@@ -502,6 +520,48 @@ async function importPinsFromZip(file) {
 
 function uuid() {
   return (crypto?.randomUUID?.() || `id_${Date.now()}_${Math.random().toString(16).slice(2)}`);
+}
+
+function todayInputValue() {
+  const now = new Date();
+  const tzOffset = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - tzOffset).toISOString().slice(0, 10);
+}
+
+function normalizeGeneratorTag(value) {
+  const cleaned = String(value || "").replace(/^#+/, "").trim().toLowerCase();
+  return GENERATOR_OPTIONS.find((option) => option.toLowerCase() === cleaned) || "";
+}
+
+function getSelectedGenerators() {
+  return Array.from(document.querySelectorAll(".generator-picker input:checked"))
+    .map((input) => normalizeGeneratorTag(input.value))
+    .filter(Boolean);
+}
+
+function setSelectedGenerators(generators = []) {
+  const selected = new Set(
+    (Array.isArray(generators) ? generators : [])
+      .map((value) => normalizeGeneratorTag(value))
+      .filter(Boolean)
+  );
+
+  document.querySelectorAll(".generator-picker input").forEach((input) => {
+    input.checked = selected.has(normalizeGeneratorTag(input.value));
+  });
+}
+
+function renderTagList(container, tags = [], options = {}) {
+  if (!container) return;
+  container.innerHTML = "";
+  const prefix = options.prefix ?? "#";
+
+  tags.forEach((tag) => {
+    const chip = document.createElement("span");
+    chip.className = "tag-chip";
+    chip.textContent = `${prefix}${tag}`;
+    container.appendChild(chip);
+  });
 }
 
 function applyTheme(theme){
@@ -570,10 +630,14 @@ async function renderMixerPicklist(){
     row.addEventListener("click", async (e) => {
       const id = row.dataset.id;
       const act = e.target?.dataset?.act;
+      const clickedCheckbox = e.target?.classList?.contains("mixer-check");
+      const clickedLeftArea = e.target?.closest(".mixer-item-left");
 
       // checkbox toggle (if click on checkbox OR left area)
-      if(e.target?.classList?.contains("mixer-check")){
-        const checked = e.target.checked;
+      if(clickedCheckbox || clickedLeftArea){
+        const checked = clickedCheckbox
+          ? e.target.checked
+          : !mixerSelectedIds.includes(id);
         if(checked && !mixerSelectedIds.includes(id)) mixerSelectedIds.push(id);
         if(!checked) mixerSelectedIds = mixerSelectedIds.filter(x => x !== id);
         await renderMixerPicklist();
@@ -688,14 +752,21 @@ function getVariantPinsForPrompt(prompt) {
 
 function renderAlbum() {
   const q = (searchInput.value || "").trim().toLowerCase();
+  const qNormalized = q.replace(/#/g, "");
 
   // Si hay búsqueda, mostramos TODO (mine + saved)
   const searching = q.length > 0;
 
   const mineCount = state.pins.filter(p => (p.bucket || "mine") === "mine").length;
   const savedCount = state.pins.filter(p => (p.bucket || "mine") === "saved").length;
+  const sweetCount = state.pins.filter((p) => Array.isArray(p.moods) && p.moods.includes("sweet")).length;
+  const spicyCount = state.pins.filter((p) => Array.isArray(p.moods) && p.moods.includes("spicy")).length;
+  const otherCount = state.pins.filter((p) => Array.isArray(p.moods) && p.moods.includes("other")).length;
   if (countMine) countMine.textContent = mineCount;
   if (countSaved) countSaved.textContent = savedCount;
+  if (countSweet) countSweet.textContent = sweetCount;
+  if (countSpicy) countSpicy.textContent = spicyCount;
+  if (countOther) countOther.textContent = otherCount;
 
   const tab = state.albumTab || "mine";
   const base = searching
@@ -712,6 +783,7 @@ function renderAlbum() {
           (p.prompt || "").toLowerCase().includes(q) ||
           (p.title || "").toLowerCase().includes(q) ||
           (p.notes || "").toLowerCase().includes(q) ||
+          (Array.isArray(p.generators) ? p.generators.join(" ").toLowerCase() : "").includes(qNormalized) ||
           (p.creditName || "").toLowerCase().includes(q) // bonus: buscar por autor
       )
     : moodBase;
@@ -739,17 +811,26 @@ function renderAlbum() {
     card.className = "pin";
     card.tabIndex = 0;
 
-    const img = document.createElement("img");
-    img.alt = pin.title || "Pin image";
-
+    const visual = document.createElement("div");
+    visual.className = "pin-visual";
     if (pin.imageBlob) {
+      const img = document.createElement("img");
+      img.alt = pin.title || "Pin image";
       const url = URL.createObjectURL(pin.imageBlob);
       img.src = url;
       img.onload = () => URL.revokeObjectURL(url);
       img.loading = "lazy";
       img.decoding = "async";
+      visual.appendChild(img);
     } else {
-      img.src = "";
+      visual.classList.add("no-image");
+      visual.innerHTML = `
+        <div class="pin-placeholder">
+          <div class="pin-placeholder-mark">✍️</div>
+          <div class="pin-placeholder-title">Prompt only</div>
+          <div class="pin-placeholder-copy">Saved without an image. You can still open, edit, and export it.</div>
+        </div>
+      `;
     }
 
     const actions = document.createElement("div");
@@ -780,6 +861,13 @@ function renderAlbum() {
     meta.appendChild(title);
     meta.appendChild(sub);
 
+    if (Array.isArray(pin.generators) && pin.generators.length) {
+      const tags = document.createElement("div");
+      tags.className = "tag-list compact";
+      renderTagList(tags, pin.generators);
+      meta.appendChild(tags);
+    }
+
     if ((pin.bucket || "mine") === "saved" && pin.creditName) {
       const credit = document.createElement("div");
       credit.className = "pin-credit";
@@ -794,7 +882,7 @@ function renderAlbum() {
       meta.appendChild(dateEl);
     }
 
-    card.appendChild(img);
+    card.appendChild(visual);
     card.appendChild(actions);
     const variantCount = variantCountByPrompt.get(normalizePromptVariantKey(pin.prompt)) || 0;
     if (variantCount > 1) {
@@ -827,7 +915,18 @@ function resetBuilder() {
 
   promptInput.value = "";
   notesInput.value = "";
-  if (dateInput) dateInput.value = "";
+  if (dateInput) dateInput.value = todayInputValue();
+  setSelectedGenerators([]);
+  document.querySelectorAll(".mood-picker input").forEach((input) => {
+    input.checked = false;
+  });
+  const isMineEl = $("#isMine");
+  const creditNameEl = $("#creditName");
+  const creditLinkEl = $("#creditLink");
+  if (isMineEl) isMineEl.checked = true;
+  if (creditNameEl) creditNameEl.value = "";
+  if (creditLinkEl) creditLinkEl.value = "";
+  $("#creditFields")?.classList.add("hidden");
   imagePreviewWrap.classList.add("hidden");
   imagePreview.src = "";
   saveBtn.disabled = true;
@@ -835,8 +934,13 @@ function resetBuilder() {
 
 function builderDirtyValid() {
   const hasPrompt = !!(promptInput.value || "").trim();
-  const hasImage = !!state.currentImageBlob;
-  return hasPrompt && hasImage;
+  return hasPrompt;
+}
+
+function isLikelyImageFile(file) {
+  if (!file) return false;
+  if (file.type && file.type.startsWith("image/")) return true;
+  return /\.(png|jpe?g|webp|gif|avif|bmp|svg)$/i.test(file.name || "");
 }
 
 function updateSaveEnabled() {
@@ -847,13 +951,13 @@ async function setImageFromFile(file) {
   if (!file) return;
 
   // Basic type check
-  if (!file.type.startsWith("image/")) {
+  if (!isLikelyImageFile(file)) {
     showToast("Please upload an image ✨");
     return;
   }
 
   state.currentImageBlob = file;
-  state.currentImageType = file.type;
+  state.currentImageType = file.type || "image/png";
 
   const url = URL.createObjectURL(file);
   imagePreview.src = url;
@@ -887,7 +991,8 @@ async function copyText(text) {
 async function savePin() {
   const prompt = (promptInput.value || "").trim();
   const notes = (notesInput.value || "").trim();
-  const dateText = (dateInput?.value || "").trim();
+  const dateText = (dateInput?.value || "").trim() || todayInputValue();
+  const generators = getSelectedGenerators();
   const moods = Array.from(
     document.querySelectorAll(".mood-picker input:checked")
   ).map(i => i.value);
@@ -910,6 +1015,7 @@ async function savePin() {
     prompt,
     notes,
     dateText,
+    generators,
     moods,
     imageBlob: state.currentImageBlob,
     imageType: state.currentImageType || "image/png",
@@ -935,6 +1041,27 @@ async function savePin() {
   resetBuilder();
 }
 
+async function savePinSafe() {
+  if (savePinRunning) return;
+  if (!builderDirtyValid()) return;
+
+  savePinRunning = true;
+  saveBtn.disabled = true;
+  const originalLabel = saveBtn.textContent;
+  saveBtn.textContent = "Saving...";
+
+  try {
+    await savePin();
+  } catch (error) {
+    console.error("Could not save pin", error);
+    showToast("Could not save here. Try the browser tab or reload once.");
+  } finally {
+    savePinRunning = false;
+    saveBtn.textContent = originalLabel;
+    updateSaveEnabled();
+  }
+}
+
 function openModal(id) {
   state.modalOpenId = id;
   const pin = state.pins.find(p => p.id === id);
@@ -945,8 +1072,10 @@ function openModal(id) {
     const url = URL.createObjectURL(pin.imageBlob);
     modalImage.src = url;
     modalImage.onload = () => URL.revokeObjectURL(url);
+    modalImage.style.display = "block";
   } else {
     modalImage.src = "";
+    modalImage.style.display = "none";
   }
 
   modalPrompt.textContent = pin.prompt || "";
@@ -987,6 +1116,13 @@ function openModal(id) {
   } else {
     modalDateWrap.style.display = "none";
   }
+  if (Array.isArray(pin.generators) && pin.generators.length && modalGeneratorsWrap && modalGenerators) {
+    modalGeneratorsWrap.classList.remove("hidden");
+    renderTagList(modalGenerators, pin.generators);
+  } else if (modalGeneratorsWrap && modalGenerators) {
+    modalGeneratorsWrap.classList.add("hidden");
+    modalGenerators.innerHTML = "";
+  }
   if (pin.notes && pin.notes.trim()) {
     modalNotesWrap.style.display = "block";
     modalNotes.textContent = pin.notes;
@@ -1013,7 +1149,20 @@ async function editFromModal() {
   state.editingId = pin.id;
   promptInput.value = pin.prompt || "";
   notesInput.value = pin.notes || "";
-  if (dateInput) dateInput.value = pin.dateText || "";
+  if (dateInput) dateInput.value = pin.dateText || todayInputValue();
+  setSelectedGenerators(pin.generators || []);
+  document.querySelectorAll(".mood-picker input").forEach((input) => {
+    input.checked = Array.isArray(pin.moods) && pin.moods.includes(input.value);
+  });
+  const isMineEl = $("#isMine");
+  const creditNameEl = $("#creditName");
+  const creditLinkEl = $("#creditLink");
+  const creditFields = $("#creditFields");
+  const isMine = (pin.bucket || "mine") === "mine";
+  if (isMineEl) isMineEl.checked = isMine;
+  if (creditNameEl) creditNameEl.value = pin.creditName || "";
+  if (creditLinkEl) creditLinkEl.value = pin.creditLink || "";
+  creditFields?.classList.toggle("hidden", isMine);
 
   if (pin.imageBlob) {
     state.currentImageBlob = pin.imageBlob;
@@ -1194,7 +1343,7 @@ window.addEventListener("keydown", (e) => {
 
   // Buttons
   copyBtn?.addEventListener("click", async () => copyText(promptInput?.value || ""));
-  saveBtn?.addEventListener("click", savePin);
+  saveBtn?.addEventListener("click", savePinSafe);
 
   // Album tabs
   const tabMine = $("#tabMine");
@@ -1248,7 +1397,15 @@ window.addEventListener("keydown", (e) => {
 async function registerSW() {
   if (!("serviceWorker" in navigator)) return;
   try {
-    await navigator.serviceWorker.register("./sw.js");
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+
+    const reg = await navigator.serviceWorker.register("./sw.js");
+    await reg.update();
   } catch {
     // ignore
   }
@@ -1257,6 +1414,7 @@ async function registerSW() {
 async function init() {
   initTheme();
   wireEvents();
+  resetBuilder();
   await refreshPins();
   await registerSW();
   await renderPresets();
@@ -1378,6 +1536,7 @@ async function savePreset() {
   showToast("Saved ✨");
   closePresetModal();
   await renderPresets();
+  await renderMixerPicklist();
 }
 
 async function renderPresets() {
@@ -1426,13 +1585,13 @@ async function renderPresets() {
       if (!act) return;
 
       if (act === "copy") {
-        await navigator.clipboard.writeText(p.description || "");
-        showToast("Copied ✨");
+        await copyText(p.description || "");
       } else if (act === "edit") {
         await openPresetEditor(p.id);
       } else if (act === "del") {
         await deletePreset(p.id);
         await renderPresets();
+        await renderMixerPicklist();
         showToast("Deleted ✨");
       }
     });
@@ -1444,4 +1603,3 @@ async function renderPresets() {
 }
 
 presetSearch?.addEventListener("input", renderPresets);
-

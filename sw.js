@@ -1,4 +1,4 @@
-const CACHE = "promptpin-v8";
+const CACHE = "promptpin-v9";
 const ASSETS = [
   "./",
   "./index.html",
@@ -9,7 +9,9 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
+  e.waitUntil(
+    caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (e) => {
@@ -25,7 +27,24 @@ self.addEventListener("activate", (e) => {
 });
 
 self.addEventListener("fetch", (e) => {
-  e.respondWith(
-    caches.match(e.request).then((cached) => cached || fetch(e.request))
-  );
+  if (e.request.method !== "GET") return;
+
+  const url = new URL(e.request.url);
+  if (url.origin !== self.location.origin) return;
+
+  e.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+
+    try {
+      const fresh = await fetch(e.request);
+      if (fresh && fresh.ok) {
+        cache.put(e.request, fresh.clone());
+      }
+      return fresh;
+    } catch {
+      const cached = await cache.match(e.request);
+      if (cached) return cached;
+      throw new Error("Network unavailable and no cached response found.");
+    }
+  })());
 });

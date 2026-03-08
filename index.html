@@ -47,9 +47,9 @@
           Community Prompts <span class="tab-count" id="countSaved">0</span>
         </button>
         <div class="mood-sidebar">
-          <button data-mood="sweet">&#x1F36C; Sweet</button>
-          <button data-mood="spicy">&#x1F336;&#xFE0F; Spicy</button>
-          <button data-mood="other">&#x2728; Other</button>
+          <button data-mood="sweet">&#x1F36C; Sweet <span class="mood-count" id="countSweet">0</span></button>
+          <button data-mood="spicy">&#x1F336;&#xFE0F; Spicy <span class="mood-count" id="countSpicy">0</span></button>
+          <button data-mood="other">&#x2728; Other <span class="mood-count" id="countOther">0</span></button>
         </div>
       </div>
     </div>
@@ -83,12 +83,26 @@
     <!-- BUILDER -->
     <section id="view-builder" class="view hidden">
       <div class="builder">
+        <section class="builder-hero">
+          <div>
+            <div class="builder-kicker">PromptPin Builder</div>
+            <h1 class="builder-title">Save each prompt with its image, date, and creative source.</h1>
+            <p class="builder-copy">The date starts on today so every upload is fresh by default, but you can adjust it anytime before saving.</p>
+          </div>
+          <div class="builder-badges" aria-label="Suggested generator tags">
+            <span>#Sora</span>
+            <span>#ChatGPT</span>
+            <span>#Grok</span>
+            <span>#NanoBanana</span>
+          </div>
+        </section>
+
         <div class="field">
           <label class="label">Image</label>
           <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload image">
             <input id="imageInput" type="file" accept="image/*" hidden />
             <div class="dz-inner">
-              <div class="dz-title">Upload an image</div>
+              <div class="dz-title">Upload an image (optional)</div>
               <div class="dz-sub">Drag & drop, or click to choose</div>
             </div>
           </div>
@@ -109,8 +123,31 @@
         </div>
 
         <div class="field">
-          <label class="label" for="dateInput">Date (optional)</label>
-          <input id="dateInput" class="input" type="text" placeholder="DD/MM/YYYY" />
+          <label class="label" for="dateInput">Date</label>
+          <input id="dateInput" class="input" type="date" />
+          <div class="hint">It fills with today automatically, and you can change it if you want.</div>
+        </div>
+
+        <div class="field">
+          <label class="label">Image generator tags (optional)</label>
+          <div class="generator-picker">
+            <label class="generator-option">
+              <input type="checkbox" value="Sora" />
+              <span>#Sora</span>
+            </label>
+            <label class="generator-option">
+              <input type="checkbox" value="ChatGPT" />
+              <span>#ChatGPT</span>
+            </label>
+            <label class="generator-option">
+              <input type="checkbox" value="Grok" />
+              <span>#Grok</span>
+            </label>
+            <label class="generator-option">
+              <input type="checkbox" value="NanoBanana" />
+              <span>#NanoBanana</span>
+            </label>
+          </div>
         </div>
 
         <div class="field">
@@ -131,7 +168,7 @@
           </div>
         </div>
 
-        <div class="hint">Tip: your pins are saved locally on this device.</div>
+        <div class="hint">Tip: you can save a prompt with or without an image. Everything stays local on this device.</div>
       </div>
 <label class="row">
   <input id="isMine" type="checkbox" checked />
@@ -220,6 +257,10 @@
           <div class="label">Date</div>
           <div id="modalDate" class="pre muted"></div>
         </div>
+        <div class="modal-section hidden" id="modalGeneratorsWrap">
+          <div class="label">Generator tags</div>
+          <div id="modalGenerators" class="tag-list"></div>
+        </div>
         <div class="modal-section" id="modalNotesWrap">
           <div class="label">Notes</div>
           <pre id="modalNotes" class="pre muted"></pre>
@@ -293,4 +334,3 @@
   <script type="module" src="./app.js"></script>
 </body>
 </html>
-
