@@ -25,6 +25,7 @@ const mixerResult = $("#mixerResult");
 
 const routes = {
   album: $("#view-album"),
+  videoteca: $("#view-album"),
   builder: $("#view-builder"),
   presets: $("#view-presets"),
 };
@@ -35,6 +36,8 @@ const emptyState = $("#emptyState");
 const loadMoreWrap = $("#loadMoreWrap");
 const loadMoreBtn = $("#loadMoreBtn");
 const loadMoreInfo = $("#loadMoreInfo");
+const libraryTitle = $("#libraryTitle");
+const libraryKicker = $("#libraryKicker");
 const searchInput = $("#searchInput");
 const newPinBtn = $("#newPinBtn");
 const downloadAllZipBtn = $("#downloadAllZipBtn");
@@ -49,8 +52,12 @@ const moodSidebar = document.querySelector(".mood-sidebar");
 const dropzone = $("#dropzone");
 const imageInput = $("#imageInput");
 const imagePreviewWrap = $("#imagePreviewWrap");
-const imagePreview = $("#imagePreview");
+const imagePreviewGrid = $("#imagePreviewGrid");
+const imagePreviewMeta = $("#imagePreviewMeta");
 const removeImageBtn = $("#removeImageBtn");
+const dropzoneTitle = $("#dropzoneTitle");
+const dropzoneSub = $("#dropzoneSub");
+const mediaKindInputs = document.querySelectorAll("input[name='mediaKind']");
 const promptInput = $("#promptInput");
 const notesInput = $("#notesInput");
 const dateInput = $("#dateInput");
@@ -64,6 +71,11 @@ const modal = $("#modal");
 const modalBackdrop = $("#modalBackdrop");
 const closeModalBtn = $("#closeModalBtn");
 const modalImage = $("#modalImage");
+const modalVideo = document.createElement("video");
+modalVideo.className = "modal-img hidden";
+modalVideo.controls = true;
+modalVideo.playsInline = true;
+modalImage?.insertAdjacentElement("afterend", modalVideo);
 const modalPrompt = $("#modalPrompt");
 const modalNotesWrap = $("#modalNotesWrap");
 const modalNotes = $("#modalNotes");
@@ -106,8 +118,7 @@ let state = {
   pins: [],
   currentRoute: "album",
   editingId: null,
-  currentImageBlob: null,
-  currentImageType: null,
+  currentMediaItems: [],
   modalOpenId: null,
 presetEditingId: null,
 presetAvatarBlob: null,
@@ -146,11 +157,92 @@ function slugifyFileName(text, fallback = "pin") {
   return clean || fallback;
 }
 
+function getCurrentLibraryKind() {
+  return state.currentRoute === "videoteca" ? "video" : "image";
+}
+
+function getBuilderMediaKind() {
+  return document.querySelector("input[name='mediaKind']:checked")?.value || "image";
+}
+
+function syncBuilderMediaKind(kind = "image") {
+  mediaKindInputs.forEach((input) => {
+    input.checked = input.value === kind;
+  });
+  const isVideo = kind === "video";
+  if (imageInput) {
+    imageInput.accept = isVideo ? "video/*" : "image/*";
+    imageInput.multiple = true;
+  }
+  if (dropzoneTitle) dropzoneTitle.textContent = isVideo ? "Upload video files (optional)" : "Upload image files (optional)";
+  if (dropzoneSub) dropzoneSub.textContent = "Drag & drop, or click to choose one or more files";
+}
+
+function getPinMediaKind(pin) {
+  if (pin?.mediaKind) return pin.mediaKind;
+  return "image";
+}
+
+function getPinMediaBlob(pin) {
+  return pin?.imageBlob || null;
+}
+
+function getPinMediaType(pin) {
+  return pin?.imageType || pin?.imageBlob?.type || (getPinMediaKind(pin) === "video" ? "video/mp4" : "image/png");
+}
+
+function renderBuilderPreview() {
+  if (!imagePreviewWrap || !imagePreviewGrid || !imagePreviewMeta) return;
+
+  const items = Array.isArray(state.currentMediaItems) ? state.currentMediaItems : [];
+  imagePreviewGrid.innerHTML = "";
+
+  if (!items.length) {
+    imagePreviewWrap.classList.add("hidden");
+    imagePreviewMeta.textContent = "";
+    return;
+  }
+
+  imagePreviewWrap.classList.remove("hidden");
+  const kind = getBuilderMediaKind();
+  imagePreviewMeta.textContent = `${items.length} ${kind}${items.length > 1 ? "s" : ""} ready to save with this prompt`;
+
+  items.forEach((item, index) => {
+    const cell = document.createElement("div");
+    cell.className = "preview-cell";
+    const url = URL.createObjectURL(item.blob);
+
+    if (item.kind === "video") {
+      const video = document.createElement("video");
+      video.className = "preview";
+      video.controls = index === 0;
+      video.muted = true;
+      video.playsInline = true;
+      video.src = url;
+      video.onloadeddata = () => URL.revokeObjectURL(url);
+      cell.appendChild(video);
+    } else {
+      const img = document.createElement("img");
+      img.className = "preview";
+      img.alt = `Preview ${index + 1}`;
+      img.src = url;
+      img.onload = () => URL.revokeObjectURL(url);
+      cell.appendChild(img);
+    }
+
+    imagePreviewGrid.appendChild(cell);
+  });
+}
+
 function buildPinImageFileName(pin, index, ext) {
   const title = pin?.title || firstTitleFromPrompt(pin?.prompt || "") || `pin-${index}`;
   const safeTitle = slugifyFileName(title, `pin-${index}`);
   const order = String(index).padStart(3, "0");
   return `${order}-${safeTitle}.${ext}`;
+}
+
+function buildPinMediaFileName(pin, index, ext) {
+  return buildPinImageFileName(pin, index, ext);
 }
 
 function triggerBlobDownload(blob, filename) {
@@ -169,6 +261,7 @@ function buildPinTextExport(pin) {
   const prompt = (pin?.prompt || "").trim();
   const notes = (pin?.notes || "").trim();
   const dateText = (pin?.dateText || "").trim();
+  const mediaKind = getPinMediaKind(pin);
   const generators = Array.isArray(pin?.generators) ? pin.generators.join(", ") : "";
   const moods = Array.isArray(pin?.moods) ? pin.moods.join(", ") : "";
   const owner = (pin?.bucket || "mine") === "mine" ? "mine" : "saved";
@@ -178,6 +271,7 @@ function buildPinTextExport(pin) {
   const lines = [
     `Title: ${title}`,
     `Owner: ${owner}`,
+    `Media: ${mediaKind}`,
   ];
   if (dateText) lines.push(`Date: ${dateText}`);
   if (generators) lines.push(`Generators: ${generators}`);
@@ -200,6 +294,7 @@ function parsePinTextExport(text, fallbackTitle = "Untitled") {
     moods: [],
     creditName: "",
     creditLink: "",
+    mediaKind: "image",
     prompt: "",
     notes: "",
   };
@@ -216,6 +311,7 @@ function parsePinTextExport(text, fallbackTitle = "Untitled") {
     if (key === "title" && value) out.title = value;
     if (key === "owner") out.bucket = value.toLowerCase() === "saved" ? "saved" : "mine";
     if (key === "date") out.dateText = value;
+    if (key === "media") out.mediaKind = value.toLowerCase() === "video" ? "video" : "image";
     if (key === "generators") {
       out.generators = value
         .split(",")
@@ -247,18 +343,22 @@ function parsePinTextExport(text, fallbackTitle = "Untitled") {
 }
 
 function getPinImageDownloadData(pin) {
-  if (!pin?.imageBlob) return null;
-  const ext = fileExtFromType(pin.imageType || pin.imageBlob.type, "png");
-  return { blob: pin.imageBlob, ext };
+  const blob = getPinMediaBlob(pin);
+  if (!blob) return null;
+  const type = getPinMediaType(pin);
+  const ext = getPinMediaKind(pin) === "video"
+    ? ({ "video/mp4": "mp4", "video/webm": "webm", "video/ogg": "ogv", "video/quicktime": "mov" }[type] || "mp4")
+    : fileExtFromType(type, "png");
+  return { blob, ext, mediaKind: getPinMediaKind(pin) };
 }
 
 function downloadSinglePinImage(pin, index = 1, silent = false) {
   const file = getPinImageDownloadData(pin);
   if (!file) {
-    if (!silent) showToast("This pin has no image");
+    if (!silent) showToast("This pin has no media");
     return false;
   }
-  const filename = buildPinImageFileName(pin, index, file.ext);
+  const filename = buildPinMediaFileName(pin, index, file.ext);
   triggerBlobDownload(file.blob, filename);
   if (!silent) showToast("Image downloaded ✨");
   return true;
@@ -293,9 +393,10 @@ async function downloadAllImagesZip() {
     return;
   }
 
-  const pinsWithImage = state.pins.filter((p) => p.imageBlob);
-  if (!pinsWithImage.length) {
-    showToast("No images to export");
+  const libraryKind = getCurrentLibraryKind();
+  const pinsWithMedia = state.pins.filter((p) => getPinMediaKind(p) === libraryKind && getPinMediaBlob(p));
+  if (!pinsWithMedia.length) {
+    showToast(libraryKind === "video" ? "No videos to export" : "No images to export");
     return;
   }
 
@@ -311,10 +412,10 @@ async function downloadAllImagesZip() {
     const names = new Set();
     let ok = 0;
     let fail = 0;
-    const total = pinsWithImage.length;
+    const total = pinsWithMedia.length;
 
-    for (let i = 0; i < pinsWithImage.length; i++) {
-      const pin = pinsWithImage[i];
+    for (let i = 0; i < pinsWithMedia.length; i++) {
+      const pin = pinsWithMedia[i];
       const file = getPinImageDownloadData(pin);
       if (!file) {
         fail++;
@@ -325,7 +426,7 @@ async function downloadAllImagesZip() {
         downloadAllZipBtn.textContent = `Preparing ZIP... ${i + 1}/${total}`;
       }
 
-      let name = buildPinImageFileName(pin, i + 1, file.ext);
+      let name = buildPinMediaFileName(pin, i + 1, file.ext);
       if (names.has(name)) {
         const dot = name.lastIndexOf(".");
         const base = dot >= 0 ? name.slice(0, dot) : name;
@@ -346,7 +447,7 @@ async function downloadAllImagesZip() {
     }
 
     if (!ok) {
-      showToast("No images could be exported");
+      showToast(libraryKind === "video" ? "No videos could be exported" : "No images could be exported");
       return;
     }
 
@@ -360,8 +461,8 @@ async function downloadAllImagesZip() {
       }
     );
     const stamp = new Date().toISOString().slice(0, 10);
-    triggerBlobDownload(blob, `promptpin-export-${stamp}.zip`);
-    showToast(`ZIP ready: ${ok} images${fail ? `, ${fail} failed` : ""}`);
+    triggerBlobDownload(blob, `promptpin-${libraryKind}-${stamp}.zip`);
+    showToast(`ZIP ready: ${ok} ${libraryKind === "video" ? "videos" : "images"}${fail ? `, ${fail} failed` : ""}`);
   } finally {
     zipDownloadRunning = false;
     if (downloadAllZipBtn) {
@@ -378,6 +479,10 @@ function mimeFromExt(ext) {
   if (key === "webp") return "image/webp";
   if (key === "gif") return "image/gif";
   if (key === "avif") return "image/avif";
+  if (key === "mp4") return "video/mp4";
+  if (key === "webm") return "video/webm";
+  if (key === "ogv" || key === "ogg") return "video/ogg";
+  if (key === "mov") return "video/quicktime";
   return "application/octet-stream";
 }
 
@@ -409,11 +514,11 @@ async function importPinsFromZip(file) {
     const zip = await window.JSZip.loadAsync(file);
     const imageEntries = Object.values(zip.files).filter((entry) => {
       if (entry.dir) return false;
-      return /\.(png|jpe?g|webp|gif|avif)$/i.test(entry.name);
+      return /\.(png|jpe?g|webp|gif|avif|mp4|webm|ogv|ogg|mov)$/i.test(entry.name);
     });
 
     if (!imageEntries.length) {
-      showToast("ZIP has no images to import");
+      showToast("ZIP has no supported media to import");
       return;
     }
 
@@ -424,9 +529,9 @@ async function importPinsFromZip(file) {
     const knownImageHashes = new Set();
 
     for (const existingPin of state.pins) {
-      if (!existingPin?.imageBlob) continue;
+      if (!getPinMediaBlob(existingPin)) continue;
       try {
-        const h = await hashBlobSha256(existingPin.imageBlob);
+        const h = await hashBlobSha256(getPinMediaBlob(existingPin));
         if (h) knownImageHashes.add(h);
       } catch {
         // ignore hash errors on existing items
@@ -439,6 +544,7 @@ async function importPinsFromZip(file) {
         const extMatch = imgEntry.name.match(/\.([a-zA-Z0-9]+)$/);
         const ext = (extMatch?.[1] || "png").toLowerCase();
         const mime = mimeFromExt(ext);
+        const mediaKind = mime.startsWith("video/") ? "video" : "image";
         const dot = imgEntry.name.lastIndexOf(".");
         const txtPath = `${dot >= 0 ? imgEntry.name.slice(0, dot) : imgEntry.name}.txt`;
         const txtEntry = zip.file(txtPath);
@@ -464,6 +570,7 @@ async function importPinsFromZip(file) {
               moods: [],
               creditName: "",
               creditLink: "",
+              mediaKind,
               prompt: "",
               notes: "",
             };
@@ -480,6 +587,8 @@ async function importPinsFromZip(file) {
           moods: Array.isArray(meta.moods) ? meta.moods : [],
           imageBlob,
           imageType: mime,
+          mediaKind: meta.mediaKind === "video" ? "video" : mediaKind,
+          isFavorite: false,
           bucket: meta.bucket === "saved" ? "saved" : "mine",
           creditName: meta.bucket === "saved" ? (meta.creditName || "") : "",
           creditLink: meta.bucket === "saved" ? (meta.creditLink || "") : "",
@@ -494,7 +603,7 @@ async function importPinsFromZip(file) {
     }
 
     if (!imported && skipped > 0 && !failed) {
-      showToast("No new images: all were duplicates");
+      showToast("No new media: all were duplicates");
       return;
     }
 
@@ -718,13 +827,16 @@ function resetAlbumPagination() {
 
 function routeTo(name) {
   state.currentRoute = name;
-
-  Object.entries(routes).forEach(([k, el]) => {
-    if (!el) return; // <- evita que reviente si falta alguna vista
-    el.classList.toggle("hidden", k !== name);
-  });
+  const isLibraryRoute = name === "album" || name === "videoteca";
+  routes.album?.classList.toggle("hidden", !isLibraryRoute);
+  routes.builder?.classList.toggle("hidden", name !== "builder");
+  routes.presets?.classList.toggle("hidden", name !== "presets");
 
   navBtns.forEach((b) => b.classList.toggle("active", b.dataset.route === name));
+  if (isLibraryRoute) {
+    resetAlbumPagination();
+    renderAlbum();
+  }
   if (name === "presets") {
     renderPresets();
     renderMixerPicklist();
@@ -747,31 +859,38 @@ function normalizePromptVariantKey(prompt) {
 function getVariantPinsForPrompt(prompt) {
   const key = normalizePromptVariantKey(prompt);
   if (!key) return [];
-  return state.pins.filter((p) => normalizePromptVariantKey(p.prompt) === key && p.imageBlob);
+  return state.pins.filter(
+    (p) => normalizePromptVariantKey(p.prompt) === key && getPinMediaKind(p) === "image" && !!getPinMediaBlob(p)
+  );
 }
 
 function renderAlbum() {
+  const libraryKind = getCurrentLibraryKind();
   const q = (searchInput.value || "").trim().toLowerCase();
   const qNormalized = q.replace(/#/g, "");
 
   // Si hay búsqueda, mostramos TODO (mine + saved)
   const searching = q.length > 0;
 
-  const mineCount = state.pins.filter(p => (p.bucket || "mine") === "mine").length;
-  const savedCount = state.pins.filter(p => (p.bucket || "mine") === "saved").length;
-  const sweetCount = state.pins.filter((p) => Array.isArray(p.moods) && p.moods.includes("sweet")).length;
-  const spicyCount = state.pins.filter((p) => Array.isArray(p.moods) && p.moods.includes("spicy")).length;
-  const otherCount = state.pins.filter((p) => Array.isArray(p.moods) && p.moods.includes("other")).length;
+  const libraryPins = state.pins.filter((p) => getPinMediaKind(p) === libraryKind);
+  const mineCount = libraryPins.filter(p => (p.bucket || "mine") === "mine").length;
+  const savedCount = libraryPins.filter(p => (p.bucket || "mine") === "saved").length;
+  const sweetCount = libraryPins.filter((p) => Array.isArray(p.moods) && p.moods.includes("sweet")).length;
+  const spicyCount = libraryPins.filter((p) => Array.isArray(p.moods) && p.moods.includes("spicy")).length;
+  const otherCount = libraryPins.filter((p) => Array.isArray(p.moods) && p.moods.includes("other")).length;
   if (countMine) countMine.textContent = mineCount;
   if (countSaved) countSaved.textContent = savedCount;
   if (countSweet) countSweet.textContent = sweetCount;
   if (countSpicy) countSpicy.textContent = spicyCount;
   if (countOther) countOther.textContent = otherCount;
+  if (libraryTitle) libraryTitle.textContent = libraryKind === "video" ? "Videoteca" : "Album";
+  if (libraryKicker) libraryKicker.textContent = libraryKind === "video" ? "Video Library" : "Image Library";
+  if (searchInput) searchInput.placeholder = libraryKind === "video" ? "Search videos..." : "Search prompts...";
 
   const tab = state.albumTab || "mine";
   const base = searching
-    ? state.pins // <-- todo
-    : state.pins.filter((p) => (p.bucket || "mine") === tab);
+    ? libraryPins
+    : libraryPins.filter((p) => (p.bucket || "mine") === tab);
 
   const moodBase = state.moodFilter === "all"
     ? base
@@ -791,9 +910,15 @@ function renderAlbum() {
   const variantCountByPrompt = new Map();
   for (const p of state.pins) {
     const key = normalizePromptVariantKey(p.prompt);
-    if (!key || !p.imageBlob) continue;
+    if (!key || getPinMediaKind(p) !== "image" || !getPinMediaBlob(p)) continue;
     variantCountByPrompt.set(key, (variantCountByPrompt.get(key) || 0) + 1);
   }
+
+  filtered.sort((a, b) => {
+    const favDiff = Number(!!b.isFavorite) - Number(!!a.isFavorite);
+    if (favDiff) return favDiff;
+    return (b.createdAt || 0) - (a.createdAt || 0);
+  });
 
   const visibleCount = Math.min(filtered.length, state.albumVisibleCount || ALBUM_PAGE_SIZE);
   const visiblePins = filtered.slice(0, visibleCount);
@@ -813,22 +938,34 @@ function renderAlbum() {
 
     const visual = document.createElement("div");
     visual.className = "pin-visual";
-    if (pin.imageBlob) {
-      const img = document.createElement("img");
-      img.alt = pin.title || "Pin image";
-      const url = URL.createObjectURL(pin.imageBlob);
-      img.src = url;
-      img.onload = () => URL.revokeObjectURL(url);
-      img.loading = "lazy";
-      img.decoding = "async";
-      visual.appendChild(img);
+    const mediaBlob = getPinMediaBlob(pin);
+    if (mediaBlob) {
+      const url = URL.createObjectURL(mediaBlob);
+      if (getPinMediaKind(pin) === "video") {
+        const video = document.createElement("video");
+        video.className = "pin-video";
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = "metadata";
+        video.src = url;
+        video.onloadeddata = () => URL.revokeObjectURL(url);
+        visual.appendChild(video);
+      } else {
+        const img = document.createElement("img");
+        img.alt = pin.title || "Pin image";
+        img.src = url;
+        img.onload = () => URL.revokeObjectURL(url);
+        img.loading = "lazy";
+        img.decoding = "async";
+        visual.appendChild(img);
+      }
     } else {
       visual.classList.add("no-image");
       visual.innerHTML = `
         <div class="pin-placeholder">
-          <div class="pin-placeholder-mark">✍️</div>
-          <div class="pin-placeholder-title">Prompt only</div>
-          <div class="pin-placeholder-copy">Saved without an image. You can still open, edit, and export it.</div>
+          <div class="pin-placeholder-mark">${libraryKind === "video" ? "🎬" : "✍️"}</div>
+          <div class="pin-placeholder-title">${libraryKind === "video" ? "Video prompt" : "Prompt only"}</div>
+          <div class="pin-placeholder-copy">Saved without a file. You can still open, edit, and export it.</div>
         </div>
       `;
     }
@@ -846,6 +983,19 @@ function renderAlbum() {
     });
 
     actions.appendChild(copy);
+
+    const favorite = document.createElement("button");
+    favorite.className = "actionbtn favoritebtn";
+    favorite.type = "button";
+    favorite.textContent = pin.isFavorite ? "★" : "☆";
+    favorite.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      pin.isFavorite = !pin.isFavorite;
+      pin.updatedAt = Date.now();
+      await upsertPin(pin);
+      renderAlbum();
+    });
+    actions.appendChild(favorite);
 
     const meta = document.createElement("div");
     meta.className = "pin-meta";
@@ -910,13 +1060,13 @@ async function refreshPins() {
 
 function resetBuilder() {
   state.editingId = null;
-  state.currentImageBlob = null;
-  state.currentImageType = null;
+  state.currentMediaItems = [];
 
   promptInput.value = "";
   notesInput.value = "";
   if (dateInput) dateInput.value = todayInputValue();
   setSelectedGenerators([]);
+  syncBuilderMediaKind("image");
   document.querySelectorAll(".mood-picker input").forEach((input) => {
     input.checked = false;
   });
@@ -927,8 +1077,7 @@ function resetBuilder() {
   if (creditNameEl) creditNameEl.value = "";
   if (creditLinkEl) creditLinkEl.value = "";
   $("#creditFields")?.classList.add("hidden");
-  imagePreviewWrap.classList.add("hidden");
-  imagePreview.src = "";
+  renderBuilderPreview();
   saveBtn.disabled = true;
 }
 
@@ -947,8 +1096,9 @@ function updateSaveEnabled() {
   saveBtn.disabled = !builderDirtyValid();
 }
 
-async function setImageFromFile(file) {
-  if (!file) return;
+async function setImageFromFile(files) {
+  const list = Array.from(files || []).filter(Boolean);
+  if (!list.length) return;
 
   // Basic type check
   if (!isLikelyImageFile(file)) {
@@ -964,6 +1114,31 @@ async function setImageFromFile(file) {
   imagePreview.onload = () => URL.revokeObjectURL(url);
 
   imagePreviewWrap.classList.remove("hidden");
+  updateSaveEnabled();
+}
+
+async function setBuilderMediaFromFiles(files) {
+  const list = Array.from(files || []).filter(Boolean);
+  if (!list.length) return;
+
+  const mediaKind = getBuilderMediaKind();
+  const valid = list.filter((file) => {
+    if (mediaKind === "video") return !!file.type && file.type.startsWith("video/");
+    return isLikelyImageFile(file);
+  });
+
+  if (!valid.length) {
+    showToast(mediaKind === "video" ? "Please upload a video ✨" : "Please upload an image ✨");
+    return;
+  }
+
+  state.currentMediaItems = valid.map((file) => ({
+    blob: file,
+    type: file.type || (mediaKind === "video" ? "video/mp4" : "image/png"),
+    kind: mediaKind,
+  }));
+
+  renderBuilderPreview();
   updateSaveEnabled();
 }
 
@@ -993,6 +1168,8 @@ async function savePin() {
   const notes = (notesInput.value || "").trim();
   const dateText = (dateInput?.value || "").trim() || todayInputValue();
   const generators = getSelectedGenerators();
+  const mediaItems = Array.isArray(state.currentMediaItems) ? state.currentMediaItems : [];
+  const mediaKind = getBuilderMediaKind();
   const moods = Array.from(
     document.querySelectorAll(".mood-picker input:checked")
   ).map(i => i.value);
@@ -1007,38 +1184,61 @@ async function savePin() {
   const creditName = (($("#creditName")?.value || "")).trim();
   const creditLink = (($("#creditLink")?.value || "")).trim();
 
-  const pin = {
-    id: isEdit ? state.editingId : uuid(),
-    createdAt: isEdit ? (existing?.createdAt ?? Date.now()) : Date.now(),
-    updatedAt: Date.now(),
-    title: firstTitleFromPrompt(prompt),
-    prompt,
-    notes,
-    dateText,
-    generators,
-    moods,
-    imageBlob: state.currentImageBlob,
-    imageType: state.currentImageType || "image/png",
+  const itemsToSave = isEdit
+    ? [{
+        blob: mediaItems[0]?.blob || getPinMediaBlob(existing),
+        type: mediaItems[0]?.type || getPinMediaType(existing),
+        kind: mediaItems[0]?.kind || getPinMediaKind(existing),
+        id: state.editingId,
+        createdAt: existing?.createdAt ?? Date.now(),
+        isFavorite: !!existing?.isFavorite,
+      }]
+    : (mediaItems.length
+        ? mediaItems
+        : [{ blob: null, type: mediaKind === "video" ? "video/mp4" : "image/png", kind: mediaKind }]);
 
-    // NEW fields
-    bucket: isMine ? "mine" : "saved",
-    creditName: isMine ? "" : creditName,
-    creditLink: isMine ? "" : creditLink,
-  };
+  const savedPins = [];
+  for (let i = 0; i < itemsToSave.length; i++) {
+    const item = itemsToSave[i];
+    const pin = {
+      id: item.id || uuid(),
+      createdAt: item.createdAt ?? (Date.now() + i),
+      updatedAt: Date.now() + i,
+      title: firstTitleFromPrompt(prompt),
+      prompt,
+      notes,
+      dateText,
+      generators,
+      moods,
+      imageBlob: item.blob,
+      imageType: item.type,
+      mediaKind: item.kind,
+      isFavorite: !!item.isFavorite,
+      bucket: isMine ? "mine" : "saved",
+      creditName: isMine ? "" : creditName,
+      creditLink: isMine ? "" : creditLink,
+    };
 
-  await upsertPin(pin);
+    await upsertPin(pin);
+    savedPins.push(pin);
+  }
   showToast("Saved ✨");
 
-  const idx = state.pins.findIndex((p) => p.id === pin.id);
-  if (idx >= 0) {
-    state.pins[idx] = pin;
-  } else {
-    state.pins.unshift(pin);
+  for (const pin of savedPins) {
+    const idx = state.pins.findIndex((p) => p.id === pin.id);
+    if (idx >= 0) {
+      state.pins[idx] = pin;
+    } else {
+      state.pins.unshift(pin);
+    }
   }
-  state.pins.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  renderAlbum();
-  routeTo("album");
+  state.pins.sort((a, b) => {
+    const favDiff = Number(!!b.isFavorite) - Number(!!a.isFavorite);
+    if (favDiff) return favDiff;
+    return (b.createdAt || 0) - (a.createdAt || 0);
+  });
   resetBuilder();
+  routeTo(mediaKind === "video" ? "videoteca" : "album");
 }
 
 async function savePinSafe() {
@@ -1068,14 +1268,35 @@ function openModal(id) {
   if (!pin) return;
 
   modalTitle.textContent = pin.title || "Pin";
-  if (pin.imageBlob) {
-    const url = URL.createObjectURL(pin.imageBlob);
-    modalImage.src = url;
-    modalImage.onload = () => URL.revokeObjectURL(url);
-    modalImage.style.display = "block";
+  const mediaBlob = getPinMediaBlob(pin);
+  const mediaKind = getPinMediaKind(pin);
+  if (modalDownloadImageBtn) {
+    modalDownloadImageBtn.textContent = mediaKind === "video" ? "Download video" : "Download image";
+  }
+  if (mediaBlob) {
+    const url = URL.createObjectURL(mediaBlob);
+    if (mediaKind === "video") {
+      modalVideo.src = url;
+      modalVideo.onloadeddata = () => URL.revokeObjectURL(url);
+      modalVideo.classList.remove("hidden");
+      modalImage.classList.add("hidden");
+      modalImage.src = "";
+    } else {
+      modalImage.src = url;
+      modalImage.onload = () => URL.revokeObjectURL(url);
+      modalImage.classList.remove("hidden");
+      modalVideo.classList.add("hidden");
+      modalVideo.pause();
+      modalVideo.removeAttribute("src");
+      modalVideo.load();
+    }
   } else {
     modalImage.src = "";
-    modalImage.style.display = "none";
+    modalImage.classList.add("hidden");
+    modalVideo.classList.add("hidden");
+    modalVideo.pause();
+    modalVideo.removeAttribute("src");
+    modalVideo.load();
   }
 
   modalPrompt.textContent = pin.prompt || "";
@@ -1135,6 +1356,9 @@ function openModal(id) {
 
 function closeModal() {
   state.modalOpenId = null;
+  modalVideo.pause();
+  modalVideo.removeAttribute("src");
+  modalVideo.load();
   modal.classList.add("hidden");
 }
 
@@ -1164,19 +1388,15 @@ async function editFromModal() {
   if (creditLinkEl) creditLinkEl.value = pin.creditLink || "";
   creditFields?.classList.toggle("hidden", isMine);
 
-  if (pin.imageBlob) {
-    state.currentImageBlob = pin.imageBlob;
-    state.currentImageType = pin.imageType || (pin.imageBlob.type || "image/png");
-
-    const url = URL.createObjectURL(pin.imageBlob);
-    imagePreview.src = url;
-    imagePreview.onload = () => URL.revokeObjectURL(url);
-    imagePreviewWrap.classList.remove("hidden");
-  } else {
-    state.currentImageBlob = null;
-    state.currentImageType = null;
-    imagePreviewWrap.classList.add("hidden");
-  }
+  syncBuilderMediaKind(getPinMediaKind(pin));
+  state.currentMediaItems = getPinMediaBlob(pin)
+    ? [{
+        blob: getPinMediaBlob(pin),
+        type: getPinMediaType(pin),
+        kind: getPinMediaKind(pin),
+      }]
+    : [];
+  renderBuilderPreview();
 
   updateSaveEnabled();
   closeModal();
@@ -1319,27 +1539,33 @@ window.addEventListener("keydown", (e) => {
   dropzone?.addEventListener("drop", async (e) => {
     e.preventDefault();
     dropzone.style.borderColor = "rgba(183,168,255,.6)";
-    const file = e.dataTransfer?.files?.[0];
-    await setImageFromFile(file);
+    const files = e.dataTransfer?.files;
+    await setBuilderMediaFromFiles(files);
   });
 
   // File input
   imageInput?.addEventListener("change", async () => {
-    const file = imageInput.files?.[0];
-    await setImageFromFile(file);
+    const files = imageInput.files;
+    await setBuilderMediaFromFiles(files);
     imageInput.value = "";
   });
 
   removeImageBtn?.addEventListener("click", () => {
-    state.currentImageBlob = null;
-    state.currentImageType = null;
-    imagePreviewWrap?.classList.add("hidden");
-    if (imagePreview) imagePreview.src = "";
+    state.currentMediaItems = [];
+    renderBuilderPreview();
     updateSaveEnabled();
   });
 
   // Enable Save
   promptInput?.addEventListener("input", updateSaveEnabled);
+  mediaKindInputs.forEach((input) => {
+    input.addEventListener("change", () => {
+      syncBuilderMediaKind(input.value);
+      state.currentMediaItems = [];
+      renderBuilderPreview();
+      updateSaveEnabled();
+    });
+  });
 
   // Buttons
   copyBtn?.addEventListener("click", async () => copyText(promptInput?.value || ""));

@@ -22,6 +22,7 @@
 
     <nav class="nav">
       <button class="navbtn active" data-route="album">Album</button>
+      <button class="navbtn" data-route="videoteca">Videoteca</button>
       <button class="navbtn" data-route="builder">Builder</button>
 <button class="navbtn" data-route="presets">Presets</button>
     </nav>
@@ -37,6 +38,12 @@
  <div class="album-head">
   <div class="album-toolbar">
     <div class="toolbar-left">
+      <div class="library-heading">
+        <div>
+          <div class="library-kicker" id="libraryKicker">Image Library</div>
+          <div class="library-title" id="libraryTitle">Album</div>
+        </div>
+      </div>
       <input id="searchInput" class="search" type="search" placeholder="Search prompts..." autocomplete="off" />
       <div class="tabs tabs-under-search">
         <button id="tabMine" class="tab active" type="button">
@@ -86,8 +93,8 @@
         <section class="builder-hero">
           <div>
             <div class="builder-kicker">PromptPin Builder</div>
-            <h1 class="builder-title">Save each prompt with its image, date, and creative source.</h1>
-            <p class="builder-copy">The date starts on today so every upload is fresh by default, but you can adjust it anytime before saving.</p>
+            <h1 class="builder-title">Save each prompt with its image or video, date, and creative source.</h1>
+            <p class="builder-copy">Choose whether this pin belongs in your album or your videoteca, and save one or many files with the same prompt in one go.</p>
           </div>
           <div class="builder-badges" aria-label="Suggested generator tags">
             <span>#Sora</span>
@@ -98,17 +105,32 @@
         </section>
 
         <div class="field">
-          <label class="label">Image</label>
-          <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload image">
-            <input id="imageInput" type="file" accept="image/*" hidden />
+          <label class="label">Media type</label>
+          <div class="media-kind-picker">
+            <label class="mood-option">
+              <input id="mediaKindImage" type="radio" name="mediaKind" value="image" checked />
+              Album image
+            </label>
+            <label class="mood-option">
+              <input id="mediaKindVideo" type="radio" name="mediaKind" value="video" />
+              Videoteca video
+            </label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="label">Media</label>
+          <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload media">
+            <input id="imageInput" type="file" accept="image/*" multiple hidden />
             <div class="dz-inner">
-              <div class="dz-title">Upload an image (optional)</div>
-              <div class="dz-sub">Drag & drop, or click to choose</div>
+              <div class="dz-title" id="dropzoneTitle">Upload image files (optional)</div>
+              <div class="dz-sub" id="dropzoneSub">Drag & drop, or click to choose one or more files</div>
             </div>
           </div>
           <div id="imagePreviewWrap" class="preview-wrap hidden">
-            <img id="imagePreview" class="preview" alt="Preview" />
-            <button id="removeImageBtn" class="chip">Remove image</button>
+            <div id="imagePreviewMeta" class="hint"></div>
+            <div id="imagePreviewGrid" class="preview-grid"></div>
+            <button id="removeImageBtn" class="chip">Remove media</button>
           </div>
         </div>
 
