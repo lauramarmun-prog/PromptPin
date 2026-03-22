@@ -39,7 +39,6 @@ const loadMoreInfo = $("#loadMoreInfo");
 const libraryTitle = $("#libraryTitle");
 const libraryKicker = $("#libraryKicker");
 const supportChip = $("#supportChip");
-const supportHeaderLink = $("#supportHeaderLink");
 const searchInput = $("#searchInput");
 const newPinBtn = $("#newPinBtn");
 const downloadAllZipBtn = $("#downloadAllZipBtn");
@@ -1430,7 +1429,6 @@ function wireEvents() {
 newPresetBtn?.addEventListener("click", () => openPresetEditor());
 
   supportChip?.addEventListener("click", openSupportModal);
-  supportHeaderLink?.addEventListener("click", openSupportModal);
   supportModalBackdrop?.addEventListener("click", closeSupportModal);
   supportCloseBtn?.addEventListener("click", closeSupportModal);
   supportDismissBtn?.addEventListener("click", closeSupportModal);
