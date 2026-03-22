@@ -17,6 +17,7 @@
         <div class="brand-name"><span class="brand-prompt">Prompt</span><span class="brand-pin">Pin</span></div>
         <div class="brand-byline">by Lau&Geppie Lilazul</div>
         <div class="brand-sub">Your cozy prompt + image album.</div>
+        <button id="supportHeaderLink" class="brand-link" type="button">Support on Ko-fi</button>
       </div>
     </div>
 
@@ -43,6 +44,7 @@
           <div class="library-kicker" id="libraryKicker">Image Library</div>
           <div class="library-title" id="libraryTitle">Album</div>
         </div>
+        <button id="supportChip" class="support-chip" type="button">☕ Support PromptPin</button>
       </div>
       <input id="searchInput" class="search" type="search" placeholder="Search prompts..." autocomplete="off" />
       <div class="tabs tabs-under-search">
@@ -294,6 +296,29 @@
         <button id="modalDownloadImageBtn" class="ghost" type="button">Download image</button>
         <button id="modalDeleteBtn" class="ghost" type="button">Delete</button>
         <button id="modalEditBtn" class="primary" type="button">Edit</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="supportModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Support PromptPin">
+    <div class="modal-backdrop" id="supportModalBackdrop"></div>
+    <div class="modal-card support-modal-card">
+      <div class="modal-head">
+        <div class="modal-title">Support PromptPin</div>
+        <button class="iconbtn" id="supportCloseBtn" aria-label="Close">X</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="support-copy">
+          <p>This is completely optional 💛</p>
+          <p>If PromptPin has been useful to you and you'd like to support my work so I can keep building and improving little things like this, you can buy me a coffee on Ko-fi.</p>
+          <p>Thank you!<br />Lau&amp;Geppie</p>
+        </div>
+      </div>
+
+      <div class="modal-foot stickybar modalbar support-actions">
+        <button id="supportVisitBtn" class="primary" type="button">☕ Visit Ko-fi</button>
+        <button id="supportDismissBtn" class="ghost" type="button">Not now</button>
       </div>
     </div>
   </div>

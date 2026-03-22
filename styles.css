@@ -119,8 +119,28 @@ body{
   color: rgba(120,120,140,.9);
   margin-top: 2px;
 }
+.brand-link{
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: rgba(183,168,255,.55);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.brand-link:hover{
+  color: var(--brand-prompt);
+  text-decoration-color: rgba(118,224,255,.65);
+}
 :root[data-theme="dark"] .brand-byline{
   color: rgba(220,220,240,.75);
+}
+:root[data-theme="dark"] .brand-link{
+  color: rgba(220,220,240,.8);
 }
 .brand-prompt{ color: var(--brand-prompt); }
 .brand-pin{ color: var(--brand-pin); }
@@ -871,6 +891,29 @@ body{
   left: 0; right: 0; bottom: 0;
 }
 
+.support-modal-card{
+  width: min(560px, 100%);
+}
+
+.support-copy{
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.support-copy p{
+  margin: 0 0 14px;
+}
+
+.support-copy p:last-child{
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.support-actions{
+  gap: 12px;
+}
+
 /* Toast */
 .toast{
   position: fixed;
@@ -993,6 +1036,31 @@ body{
   font-size: clamp(24px, 4vw, 34px);
   line-height: 1;
   font-weight: 900;
+}
+
+.support-chip{
+  border: 1px solid rgba(183,168,255,.34);
+  background: linear-gradient(135deg, rgba(255,255,255,.92), rgba(255,245,214,.86));
+  color: var(--text);
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-weight: 800;
+  box-shadow: 0 10px 22px rgba(183,168,255,.10);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+
+.support-chip:hover{
+  border-color: rgba(118,224,255,.55);
+  box-shadow: 0 14px 26px rgba(183,168,255,.14);
+  transform: translateY(-1px);
+}
+
+:root[data-theme="dark"] .support-chip{
+  background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,208,112,.14));
+  border-color: rgba(118,224,255,.24);
+  color: var(--text);
 }
 
 .tabs-under-search{
@@ -1436,5 +1504,15 @@ body{
 
   .builder-badges{
     justify-content: flex-start;
+  }
+
+  .library-heading{
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .support-chip{
+    width: 100%;
+    text-align: center;
   }
 }

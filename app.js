@@ -38,6 +38,8 @@ const loadMoreBtn = $("#loadMoreBtn");
 const loadMoreInfo = $("#loadMoreInfo");
 const libraryTitle = $("#libraryTitle");
 const libraryKicker = $("#libraryKicker");
+const supportChip = $("#supportChip");
+const supportHeaderLink = $("#supportHeaderLink");
 const searchInput = $("#searchInput");
 const newPinBtn = $("#newPinBtn");
 const downloadAllZipBtn = $("#downloadAllZipBtn");
@@ -65,6 +67,7 @@ const copyBtn = $("#copyBtn");
 const saveBtn = $("#saveBtn");
 
 const toast = $("#toast");
+const KOFI_URL = "https://ko-fi.com/lauygeppielilazul";
 
 // Modal
 const modal = $("#modal");
@@ -91,6 +94,13 @@ const modalDownloadImageBtn = $("#modalDownloadImageBtn");
 const modalDeleteBtn = $("#modalDeleteBtn");
 const modalEditBtn = $("#modalEditBtn");
 const modalTitle = $("#modalTitle");
+
+// Support Modal
+const supportModal = $("#supportModal");
+const supportModalBackdrop = $("#supportModalBackdrop");
+const supportCloseBtn = $("#supportCloseBtn");
+const supportVisitBtn = $("#supportVisitBtn");
+const supportDismissBtn = $("#supportDismissBtn");
 
 // Preset Modal
 const presetModal = $("#presetModal");
@@ -821,6 +831,18 @@ function showToast(msg) {
   window.__toastTimer = setTimeout(() => toast.classList.remove("show"), 1400);
 }
 
+function openSupportModal() {
+  supportModal?.classList.remove("hidden");
+}
+
+function closeSupportModal() {
+  supportModal?.classList.add("hidden");
+}
+
+function openKofiLink() {
+  window.open(KOFI_URL, "_blank", "noopener,noreferrer");
+}
+
 function resetAlbumPagination() {
   state.albumVisibleCount = ALBUM_PAGE_SIZE;
 }
@@ -1407,6 +1429,16 @@ function wireEvents() {
   // Preset editor open
 newPresetBtn?.addEventListener("click", () => openPresetEditor());
 
+  supportChip?.addEventListener("click", openSupportModal);
+  supportHeaderLink?.addEventListener("click", openSupportModal);
+  supportModalBackdrop?.addEventListener("click", closeSupportModal);
+  supportCloseBtn?.addEventListener("click", closeSupportModal);
+  supportDismissBtn?.addEventListener("click", closeSupportModal);
+  supportVisitBtn?.addEventListener("click", () => {
+    openKofiLink();
+    closeSupportModal();
+  });
+
   themeToggle?.addEventListener("click", () => {
     const current = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
     const next = current === "dark" ? "light" : "dark";
@@ -1489,6 +1521,9 @@ mixerClear?.addEventListener("click", async () => {
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && presetModal && !presetModal.classList.contains("hidden")) {
     closePresetModal();
+  }
+  if (e.key === "Escape" && supportModal && !supportModal.classList.contains("hidden")) {
+    closeSupportModal();
   }
 });
 
