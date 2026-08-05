@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Permiso lilazul · PromptPin</title>
+  <style>
+    :root { color-scheme: light; font-family: ui-rounded, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 22px; color: #33203f; background: radial-gradient(circle at top, #fbf1ff, #eee7fb 55%, #e7f0ff); }
+    main { width: min(100%, 430px); padding: 28px; border: 1px solid #dfcdef; border-radius: 28px; background: rgba(255,255,255,.9); box-shadow: 0 24px 70px rgba(77,44,101,.15); }
+    .spark { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 18px; background: #8b64c3; color: white; font-size: 25px; }
+    h1 { margin: 18px 0 8px; font-size: 1.65rem; }
+    p { line-height: 1.5; color: #6e5c76; }
+    label { display: grid; gap: 7px; margin: 14px 0; font-weight: 650; }
+    input { width: 100%; padding: 13px 14px; border: 1px solid #d9c8e6; border-radius: 14px; font: inherit; }
+    button { width: 100%; min-height: 48px; border: 0; border-radius: 16px; font: inherit; font-weight: 750; cursor: pointer; }
+    .primary { color: white; background: #8961c0; }
+    .secondary { margin-top: 10px; color: #633f80; background: #f0e5fa; }
+    .details { margin: 18px 0; padding: 14px; border-radius: 16px; background: #f8f2fc; }
+    .details strong { display: block; margin-bottom: 4px; color: #40284f; }
+    .error { color: #a22c65; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="spark">✨</div>
+    <h1>Las llaves de Nuestra cajita</h1>
+    <p id="status">Preparando el permiso…</p>
+
+    <section id="login" hidden>
+      <p>Primero compruebo que eres tú con tu cuenta de PromptPin.</p>
+      <button id="google" class="primary" type="button">Continuar con Google</button>
+      <label>O recibir un enlace mágico
+        <input id="email" type="email" autocomplete="email" placeholder="tu@email.com">
+      </label>
+      <button id="magic" class="secondary" type="button">Enviarme el enlace</button>
+    </section>
+
+    <section id="consent" hidden>
+      <div class="details">
+        <strong id="client">ChatGPT</strong>
+        <span>Podrá editar descripciones, etiquetas y favoritos, o esconder una reacción. No podrá borrar imágenes.</span>
+      </div>
+      <button id="approve" class="primary" type="button">Sí, darle permiso 💛</button>
+      <button id="deny" class="secondary" type="button">Ahora no</button>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.1/dist/umd/supabase.js" integrity="sha384-0x8XPoHt08aHZj+RHs8ojmhZ5IDsTLjPgblgWdriayWriqv9dic3Vkv1K2+UqgZV" crossorigin="anonymous"></script>
+  <script>
+    const SUPABASE_URL = "https://xnostrbrajavjrmxaysw.supabase.co";
+    const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_Bf4NnLW6PUXby08Z4R6RPg_4hElKr_s";
+    const supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+    const statusEl = document.querySelector("#status");
+    const loginEl = document.querySelector("#login");
+    const consentEl = document.querySelector("#consent");
+    const authorizationId = new URLSearchParams(location.search).get("authorization_id");
+
+    function fail(message) {
+      statusEl.textContent = message;
+      statusEl.className = "error";
+      loginEl.hidden = true;
+      consentEl.hidden = true;
+    }
+
+    async function showConsent() {
+      if (!authorizationId) return fail("Este permiso no trae su identificador.");
+      const { data: userData } = await supa.auth.getUser();
+      if (!userData.user) {
+        statusEl.textContent = "Solo falta comprobar que eres Laura.";
+        loginEl.hidden = false;
+        return;
+      }
+      const { data, error } = await supa.auth.oauth.getAuthorizationDetails(authorizationId);
+      if (error) return fail(error.message);
+      if (data.redirect_url && !data.authorization_id) return location.assign(data.redirect_url);
+      document.querySelector("#client").textContent = data.client?.name || "ChatGPT";
+      statusEl.textContent = "ChatGPT quiere ayudarte a cuidar la colección.";
+      loginEl.hidden = true;
+      consentEl.hidden = false;
+    }
+
+    document.querySelector("#google").addEventListener("click", async () => {
+      const { error } = await supa.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: location.href },
+      });
+      if (error) fail(error.message);
+    });
+
+    document.querySelector("#magic").addEventListener("click", async () => {
+      const email = document.querySelector("#email").value.trim();
+      if (!email) return fail("Escribe tu correo para enviarte el enlace.");
+      const { error } = await supa.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: location.href },
+      });
+      if (error) return fail(error.message);
+      statusEl.textContent = "Enlace enviado. Ábrelo y volverás aquí ✨";
+    });
+
+    async function decide(approved) {
+      statusEl.textContent = approved ? "Guardando tu permiso…" : "Cerrando la cajita…";
+      const result = approved
+        ? await supa.auth.oauth.approveAuthorization(authorizationId)
+        : await supa.auth.oauth.denyAuthorization(authorizationId);
+      if (result.error) return fail(result.error.message);
+      location.assign(result.data.redirect_url);
+    }
+    document.querySelector("#approve").addEventListener("click", () => decide(true));
+    document.querySelector("#deny").addEventListener("click", () => decide(false));
+    showConsent().catch((error) => fail(error.message));
+  </script>
+</body>
+</html>
